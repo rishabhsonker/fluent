@@ -322,6 +322,22 @@ export function getStorage() {
   return storageInstance;
 }
 
+// Export simple storage interface for translator
+export const storage = {
+  get: async (key) => {
+    const manager = new StorageManager();
+    return await manager.get(key);
+  },
+  set: async (key, value) => {
+    const manager = new StorageManager();
+    return await manager.set(key, value);
+  },
+  remove: async (key) => {
+    const manager = new StorageManager();
+    return await manager.remove(key);
+  }
+};
+
 // Auto-cleanup on install/update
 if (chrome.runtime) {
   chrome.runtime.onInstalled.addListener(() => {

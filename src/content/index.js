@@ -150,29 +150,75 @@
     if (textNodes.length > 0) {
       console.log(`Fluent: Processing ${textNodes.length} text nodes`);
       
-      // Import and use word replacer
-      import('./replacer.js').then(module => {
-        const { WordReplacer } = module;
-        const replacer = new WordReplacer(CONFIG);
+      // Import and use word replacer with real translations
+      Promise.all([
+        import('./replacer.js'),
+        import('../lib/translator.js'),
+        import('../lib/storage.js')
+      ]).then(async ([replacerModule, translatorModule, storageModule]) => {
+        const { WordReplacer } = replacerModule;
+        const { translator } = translatorModule;
+        const { getStorage } = storageModule;
         
-        // Get mock translations for now
-        import('../lib/constants.js').then(constants => {
-          const language = 'spanish'; // Default for now
-          const translations = constants.MOCK_TRANSLATIONS[language] || {};
-          
-          // Analyze and select words
-          const wordsToReplace = replacer.analyzeText(textNodes);
-          console.log(`Fluent: Selected ${wordsToReplace.length} words for replacement`);
-          
-          // Replace words
-          const replacedCount = replacer.replaceWords(textNodes, wordsToReplace, translations);
-          console.log(`Fluent: Replaced ${replacedCount} words`);
-          
-          // Cleanup
-          replacer.cleanup();
-        });
+        const replacer = new WordReplacer(CONFIG);
+        const storage = getStorage();
+        
+        // Get user settings
+        const settings = await storage.getSettings();
+        const targetLanguage = settings.targetLanguage || 'spanish';
+        
+        // Check if site is enabled
+        const hostname = window.location.hostname;
+        const siteSettings = await storage.getSiteSettings(hostname);
+        if (siteSettings.disabled) {
+          console.log('Fluent: Disabled for this site');
+          return;
+        }
+        
+        // Analyze and select words
+        const wordsToReplace = replacer.analyzeText(textNodes);
+        console.log(`Fluent: Selected ${wordsToReplace.length} words for replacement`);
+        
+        if (wordsToReplace.length === 0) {
+          return;
+        }
+        
+        // Get translations
+        const result = await translator.translate(
+          wordsToReplace,
+          targetLanguage
+        );
+        
+        if (result.error) {
+          console.warn('Fluent:', result.error);
+          // TODO: Show notification to user about limit reached
+        }
+        
+        const translations = result.translations || {};
+        
+        // Create translation map for replacer
+        const translationMap = {};
+        for (const word of wordsToReplace) {
+          translationMap[word.toLowerCase()] = translations[word] || word;
+        }
+        
+        // Replace words
+        const replacedCount = replacer.replaceWords(textNodes, wordsToReplace, translationMap);
+        console.log(`Fluent: Replaced ${replacedCount} words`);
+        
+        // Update daily stats
+        if (replacedCount > 0) {
+          const stats = await storage.getDailyStats();
+          await storage.updateDailyStats({
+            wordsLearned: stats.wordsLearned + replacedCount,
+            pagesVisited: stats.pagesVisited + 1
+          });
+        }
+        
+        // Cleanup
+        replacer.cleanup();
       }).catch(err => {
-        console.error('Fluent: Error loading replacer', err);
+        console.error('Fluent: Error loading modules', err);
       });
     }
 
@@ -181,15 +227,43 @@
     console.log(`Fluent: Processed in ${processingTime.toFixed(2)}ms`);
   }
 
+  // Initialize components and styles
+  async function initializeExtension() {
+    try {
+      // Load CSS
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = chrome.runtime.getURL('content/styles.css');
+      document.head.appendChild(link);
+      
+      // Initialize Tooltip
+      const tooltipModule = await import('./tooltip.js');
+      new tooltipModule.Tooltip();
+      
+      // Initialize PageControl
+      const pageControlModule = await import('./PageControl.js');
+      const storageModule = await import('../lib/storage.js');
+      const storage = storageModule.getStorage();
+      const settings = await storage.getSettings();
+      
+      new pageControlModule.PageControl(settings);
+      
+      // Process content
+      processContent();
+    } catch (err) {
+      console.error('Fluent: Initialization error', err);
+    }
+  }
+  
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', processContent);
+    document.addEventListener('DOMContentLoaded', initializeExtension);
   } else {
     // Use requestIdleCallback for better performance
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(processContent, { timeout: 100 });
+      requestIdleCallback(initializeExtension, { timeout: 100 });
     } else {
-      setTimeout(processContent, 0);
+      setTimeout(initializeExtension, 0);
     }
   }
 

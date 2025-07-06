@@ -86,6 +86,21 @@ async function handleMessage(request, sender) {
     case 'GET_CACHE_STATS':
       return getCacheStats();
       
+    case 'GET_API_KEY':
+      return getApiKey();
+      
+    case 'SET_API_KEY':
+      return setApiKey(request.apiKey);
+      
+    case 'GET_DAILY_USAGE':
+      return getDailyUsage();
+      
+    case 'GET_CONTEXT_EXPLANATION':
+      return getContextExplanation(request);
+      
+    case 'GENERATE_CONTEXT':
+      return generateContext(request.prompt);
+      
     default:
       throw new Error(`Unknown message type: ${request.type}`);
   }
@@ -268,6 +283,129 @@ chrome.action.onClicked.addListener(async (tab) => {
     enabled: siteSettings.enabled
   });
 });
+
+// Get stored API key
+async function getApiKey() {
+  try {
+    const result = await chrome.storage.sync.get('userApiKey');
+    return { apiKey: result.userApiKey || '' };
+  } catch (error) {
+    console.error('Fluent: Error getting API key', error);
+    return { apiKey: '' };
+  }
+}
+
+// Set API key
+async function setApiKey(apiKey) {
+  try {
+    if (apiKey) {
+      await chrome.storage.sync.set({ userApiKey: apiKey });
+    } else {
+      await chrome.storage.sync.remove('userApiKey');
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('Fluent: Error setting API key', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Get daily usage count
+async function getDailyUsage() {
+  try {
+    const today = new Date().toDateString();
+    const result = await chrome.storage.local.get('dailyUsage');
+    const usage = result.dailyUsage || { date: today, count: 0 };
+    
+    // Reset if new day
+    if (usage.date !== today) {
+      usage.date = today;
+      usage.count = 0;
+      await chrome.storage.local.set({ dailyUsage: usage });
+    }
+    
+    return { count: usage.count, date: usage.date };
+  } catch (error) {
+    console.error('Fluent: Error getting daily usage', error);
+    return { count: 0, date: new Date().toDateString() };
+  }
+}
+
+// Update daily usage count
+async function updateDailyUsage(increment) {
+  try {
+    const usage = await getDailyUsage();
+    usage.count += increment;
+    await chrome.storage.local.set({ 
+      dailyUsage: { 
+        date: usage.date, 
+        count: usage.count 
+      } 
+    });
+    return usage;
+  } catch (error) {
+    console.error('Fluent: Error updating daily usage', error);
+    return null;
+  }
+}
+
+// Get context explanation for a word
+async function getContextExplanation(request) {
+  try {
+    // Import context helper
+    const { contextHelper } = await import('../lib/contextHelper.js');
+    
+    const explanation = await contextHelper.getExplanation(
+      request.word,
+      request.translation,
+      request.language,
+      request.sentence
+    );
+    
+    return { explanation };
+  } catch (error) {
+    console.error('Fluent: Error getting context explanation', error);
+    return { 
+      explanation: {
+        error: true,
+        explanation: 'Unable to load explanation.'
+      }
+    };
+  }
+}
+
+// Generate context using AI (Claude Haiku)
+async function generateContext(prompt) {
+  try {
+    // Check for API key
+    const apiKeyResult = await getApiKey();
+    const apiKey = apiKeyResult.apiKey;
+    
+    if (!apiKey) {
+      // For MVP, return a generic explanation
+      return {
+        text: JSON.stringify({
+          explanation: 'This translation is the most common and natural choice in this context.',
+          example: 'Usage varies by context.',
+          tip: 'Practice with native speakers to understand nuances.'
+        })
+      };
+    }
+    
+    // In production, this would call Claude API
+    // For now, return mock response
+    return {
+      text: JSON.stringify({
+        explanation: 'This word has multiple meanings, and this translation fits best in your sentence.',
+        example: 'Common phrases help you remember the usage.',
+        tip: 'Pay attention to context clues around the word.'
+      })
+    };
+  } catch (error) {
+    console.error('Fluent: Error generating context', error);
+    return { error: error.message };
+  }
+}
 
 // Monitor performance
 setInterval(() => {

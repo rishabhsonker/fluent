@@ -112,10 +112,64 @@
   cursor: pointer;
   transition: background 0.2s ease;
   font-family: inherit;
+  pointer-events: auto;
 }
 
 .fluent-tooltip-btn:hover {
   background: #4b5563;
+}
+
+/* Context panel */
+.fluent-tooltip-context-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #374151;
+}
+
+.fluent-tooltip-context-content {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.fluent-context-explanation {
+  color: #e5e7eb;
+  margin-bottom: 8px;
+}
+
+.fluent-context-example {
+  color: #93c5fd;
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.fluent-context-example strong {
+  color: #60a5fa;
+  font-weight: 600;
+  font-style: normal;
+}
+
+.fluent-context-tip {
+  color: #fbbf24;
+  font-size: 12px;
+}
+
+.fluent-context-tip strong {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.fluent-context-error {
+  color: #f87171;
+  font-size: 13px;
+  text-align: center;
+  padding: 8px;
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: 4px;
+}
+
+/* Make tooltip interactive when showing context */
+.fluent-tooltip.visible {
+  pointer-events: auto;
 }
 
 /* Page control widget */

@@ -31,6 +31,12 @@ export class Tooltip {
         <button class="fluent-tooltip-btn fluent-tooltip-pronunciation" aria-label="Play pronunciation">
           🔊 Pronunciation
         </button>
+        <button class="fluent-tooltip-btn fluent-tooltip-context" aria-label="Why this translation?">
+          💡 Why?
+        </button>
+      </div>
+      <div class="fluent-tooltip-context-panel" style="display: none;">
+        <div class="fluent-tooltip-context-content"></div>
       </div>
     `;
     
@@ -80,6 +86,11 @@ export class Tooltip {
     // Pronunciation button
     this.element.querySelector('.fluent-tooltip-pronunciation').addEventListener('click', () => {
       this.playPronunciation();
+    });
+
+    // Context button
+    this.element.querySelector('.fluent-tooltip-context').addEventListener('click', () => {
+      this.toggleContext();
     });
 
     // Hide on scroll
@@ -252,6 +263,98 @@ export class Tooltip {
         btn.textContent = '🔊 Pronunciation';
       }, 1000);
     }
+  }
+
+  async toggleContext() {
+    const panel = this.element.querySelector('.fluent-tooltip-context-panel');
+    const content = this.element.querySelector('.fluent-tooltip-context-content');
+    const btn = this.element.querySelector('.fluent-tooltip-context');
+    
+    if (panel.style.display === 'none') {
+      // Show context
+      panel.style.display = 'block';
+      btn.textContent = '💡 Loading...';
+      
+      // Get context explanation
+      const explanation = await this.getContextExplanation();
+      
+      if (explanation) {
+        content.innerHTML = `
+          <div class="fluent-context-explanation">${explanation.explanation}</div>
+          ${explanation.example ? `<div class="fluent-context-example"><strong>Example:</strong> ${explanation.example}</div>` : ''}
+          ${explanation.tip ? `<div class="fluent-context-tip"><strong>Tip:</strong> ${explanation.tip}</div>` : ''}
+        `;
+      } else {
+        content.innerHTML = '<div class="fluent-context-error">Unable to load explanation. Daily limit may be reached.</div>';
+      }
+      
+      btn.textContent = '💡 Hide';
+      this.updatePosition(); // Reposition tooltip
+    } else {
+      // Hide context
+      panel.style.display = 'none';
+      btn.textContent = '💡 Why?';
+      this.updatePosition();
+    }
+  }
+
+  async getContextExplanation() {
+    if (!this.currentTarget) return null;
+    
+    const original = this.currentTarget.getAttribute('data-original');
+    const translation = this.currentTarget.getAttribute('data-translation');
+    const language = this.getCurrentLanguage();
+    
+    // Get surrounding sentence for context
+    const sentence = this.getWordContext(this.currentTarget);
+    
+    try {
+      // Request context from background
+      const response = await chrome.runtime.sendMessage({
+        type: 'GET_CONTEXT_EXPLANATION',
+        word: original,
+        translation: translation,
+        language: language,
+        sentence: sentence
+      });
+      
+      return response.explanation;
+    } catch (error) {
+      console.error('Error getting context:', error);
+      return null;
+    }
+  }
+
+  getWordContext(element) {
+    // Get the parent text node or container
+    let container = element.parentElement;
+    while (container && container.textContent.length < 50) {
+      container = container.parentElement;
+    }
+    
+    if (!container) return '';
+    
+    // Extract sentence around the word
+    const text = container.textContent;
+    const wordIndex = text.indexOf(element.textContent);
+    
+    if (wordIndex === -1) return text.slice(0, 100);
+    
+    // Find sentence boundaries
+    let start = wordIndex;
+    let end = wordIndex + element.textContent.length;
+    
+    // Look backwards for sentence start
+    while (start > 0 && !'.!?'.includes(text[start - 1])) {
+      start--;
+    }
+    
+    // Look forwards for sentence end
+    while (end < text.length && !'.!?'.includes(text[end])) {
+      end++;
+    }
+    
+    return text.slice(start, end + 1).trim();
   }
 
   destroy() {

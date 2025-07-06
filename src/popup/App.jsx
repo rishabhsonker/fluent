@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SUPPORTED_LANGUAGES } from '../lib/constants.js';
 import BlacklistManager from './components/BlacklistManager.jsx';
+import Settings from './components/Settings.jsx';
 
 function App() {
   const [settings, setSettings] = useState(null);
@@ -8,6 +9,7 @@ function App() {
   const [siteEnabled, setSiteEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('main');
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -148,10 +150,18 @@ function App() {
       )}
 
       <div style={styles.footer}>
-        <a href="#" style={styles.link}>Settings</a>
+        <a href="#" style={styles.link} onClick={(e) => {
+          e.preventDefault();
+          setShowSettings(true);
+        }}>Settings</a>
         <span style={styles.separator}>•</span>
         <a href="#" style={styles.link}>Help</a>
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <Settings onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 }
