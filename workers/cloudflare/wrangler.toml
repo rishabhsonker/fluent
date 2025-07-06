@@ -1,0 +1,29 @@
+name = "fluent-translator"
+main = "translator.js"
+compatibility_date = "2024-01-01"
+
+# KV Namespace for caching translations
+kv_namespaces = [
+  { binding = "TRANSLATION_CACHE", id = "your-kv-namespace-id" }
+]
+
+# Environment variables (set in Cloudflare dashboard)
+# [vars]
+# MICROSOFT_TRANSLATOR_KEY = "your-api-key"
+
+# Routes (optional - can also configure in Cloudflare dashboard)
+# routes = [
+#   { pattern = "translate.yourapp.com/*", zone_name = "yourapp.com" }
+# ]
+
+[env.production]
+name = "fluent-translator"
+kv_namespaces = [
+  { binding = "TRANSLATION_CACHE", id = "your-production-kv-id" }
+]
+
+[env.development]
+name = "fluent-translator-dev"
+kv_namespaces = [
+  { binding = "TRANSLATION_CACHE", id = "your-dev-kv-id" }
+]

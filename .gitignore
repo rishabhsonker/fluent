@@ -1,36 +1,57 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-/node_modules
-/.pnp
+node_modules/
+.pnp
 .pnp.js
 
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
 # production
-/build
+dist/
+build/
+*.zip
 
 # misc
 .DS_Store
 *.pem
+keys/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cache/
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
 
-# local env files
+# env files
 .env*.local
 .env
 
-# vercel
-.vercel
+# OS files
+Thumbs.db
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Project-specific files
+CLAUDE.md
+TODO.md
+NOTES.md
+*.backup
+*.tmp
+
+# API keys and secrets
+api-keys.json
+secrets.json
+*.key
+
+# Local development files
+local-config.json
+dev-notes.txt
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Editor specific
+*.sublime-workspace
+*.sublime-project

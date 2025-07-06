@@ -1,0 +1,256 @@
+/* Fluent Extension Styles - Minimal and performant */
+
+/* Replaced word styling */
+.fluent-word {
+  color: #3b82f6 !important; /* Blue color for replaced words */
+  text-decoration: underline !important;
+  text-decoration-style: dotted !important;
+  text-decoration-thickness: 1px !important;
+  text-underline-offset: 2px !important;
+  cursor: help !important;
+  transition: all 0.2s ease;
+  position: relative;
+  display: inline;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font: inherit !important;
+  line-height: inherit !important;
+}
+
+/* Hover effect */
+.fluent-word:hover {
+  color: #2563eb !important;
+  text-decoration-style: solid !important;
+}
+
+/* Focus state for accessibility */
+.fluent-word:focus {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: 2px !important;
+  border-radius: 2px;
+}
+
+/* Tooltip container */
+.fluent-tooltip {
+  position: absolute;
+  z-index: 2147483647; /* Maximum z-index */
+  background: #1f2937;
+  color: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 300px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 
+              0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+/* Tooltip visible state */
+.fluent-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Tooltip arrow */
+.fluent-tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+  background: #1f2937;
+  transform: translateX(-50%) rotate(45deg);
+  z-index: -1;
+}
+
+/* Tooltip content sections */
+.fluent-tooltip-header {
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fluent-tooltip-translation {
+  font-size: 16px;
+  color: #60a5fa;
+  margin-bottom: 8px;
+}
+
+.fluent-tooltip-original {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+}
+
+.fluent-tooltip-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #374151;
+}
+
+/* Tooltip action buttons */
+.fluent-tooltip-btn {
+  background: #374151;
+  border: none;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  font-family: inherit;
+}
+
+.fluent-tooltip-btn:hover {
+  background: #4b5563;
+}
+
+/* Page control widget */
+.fluent-control {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fluent-control-button {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 
+              0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border: 2px solid #e5e7eb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.fluent-control-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 
+              0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Control menu */
+.fluent-control-menu {
+  position: absolute;
+  bottom: 70px;
+  right: 0;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 
+              0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 8px;
+  min-width: 200px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+.fluent-control-menu.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.fluent-control-menu-item {
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s ease;
+  color: #374151;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.fluent-control-menu-item:hover {
+  background: #f3f4f6;
+}
+
+/* Paused state */
+.fluent-paused .fluent-word {
+  color: inherit !important;
+  text-decoration: none !important;
+  cursor: inherit !important;
+}
+
+.fluent-paused .fluent-control-button {
+  opacity: 0.5;
+  filter: grayscale(100%);
+}
+
+/* Animations */
+@keyframes fluent-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fluent-word {
+  animation: fluent-fade-in 0.3s ease forwards;
+}
+
+/* Dark mode compatibility */
+@media (prefers-color-scheme: dark) {
+  .fluent-control-button {
+    background: #374151;
+    border-color: #4b5563;
+    color: white;
+  }
+  
+  .fluent-control-menu {
+    background: #374151;
+    color: white;
+  }
+  
+  .fluent-control-menu-item {
+    color: #d1d5db;
+  }
+  
+  .fluent-control-menu-item:hover {
+    background: #4b5563;
+  }
+}
+
+/* Print styles */
+@media print {
+  .fluent-word {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+  
+  .fluent-control,
+  .fluent-tooltip {
+    display: none !important;
+  }
+}
