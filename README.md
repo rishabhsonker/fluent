@@ -256,7 +256,7 @@ A: Yes. Your API key is encrypted and stored only in Chrome's secure storage. It
 
 ## 📄 License
 
-MIT License - See [LICENSE](LICENSE) file for details
+Apache License 2.0 - See [LICENSE](LICENSE) file for details
 
 ## 🙏 Acknowledgments
 
