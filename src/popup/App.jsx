@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { SUPPORTED_LANGUAGES } from '../lib/constants.js';
+import BlacklistManager from './components/BlacklistManager.jsx';
 
 function App() {
   const [settings, setSettings] = useState(null);
   const [currentSite, setCurrentSite] = useState('');
   const [siteEnabled, setSiteEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('main');
 
   useEffect(() => {
     loadSettings();
@@ -66,52 +68,84 @@ function App() {
         <p style={styles.subtitle}>Learn languages while browsing</p>
       </header>
 
-      <div style={styles.section}>
-        <div style={styles.siteToggle}>
-          <span style={styles.siteText}>
-            {siteEnabled ? '✅' : '❌'} {currentSite}
-          </span>
-          <button 
-            style={{ ...styles.button, ...(siteEnabled ? styles.buttonDanger : styles.buttonPrimary) }}
-            onClick={toggleSite}
-          >
-            {siteEnabled ? 'Disable' : 'Enable'}
-          </button>
-        </div>
+      {/* Tab Navigation */}
+      <div style={styles.tabs}>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'main' ? styles.tabActive : {})
+          }}
+          onClick={() => setActiveTab('main')}
+        >
+          Home
+        </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'blacklist' ? styles.tabActive : {})
+          }}
+          onClick={() => setActiveTab('blacklist')}
+        >
+          Blocked Sites
+        </button>
       </div>
 
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Language</h2>
-        <div style={styles.languageGrid}>
-          {Object.entries(SUPPORTED_LANGUAGES).map(([key, lang]) => (
-            <button
-              key={key}
-              style={{
-                ...styles.langButton,
-                ...(settings.targetLanguage === key ? styles.langButtonActive : {})
-              }}
-              onClick={() => updateLanguage(key)}
-            >
-              <span style={styles.flag}>{lang.flag}</span>
-              <span>{lang.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Main Tab */}
+      {activeTab === 'main' && (
+        <>
+          <div style={styles.section}>
+            <div style={styles.siteToggle}>
+              <span style={styles.siteText}>
+                {siteEnabled ? '✅' : '❌'} {currentSite}
+              </span>
+              <button 
+                style={{ ...styles.button, ...(siteEnabled ? styles.buttonDanger : styles.buttonPrimary) }}
+                onClick={toggleSite}
+              >
+                {siteEnabled ? 'Disable' : 'Enable'}
+              </button>
+            </div>
+          </div>
 
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Today's Progress</h2>
-        <div style={styles.stats}>
-          <div style={styles.stat}>
-            <div style={styles.statValue}>12</div>
-            <div style={styles.statLabel}>Words learned</div>
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>Language</h2>
+            <div style={styles.languageGrid}>
+              {Object.entries(SUPPORTED_LANGUAGES).map(([key, lang]) => (
+                <button
+                  key={key}
+                  style={{
+                    ...styles.langButton,
+                    ...(settings.targetLanguage === key ? styles.langButtonActive : {})
+                  }}
+                  onClick={() => updateLanguage(key)}
+                >
+                  <span style={styles.flag}>{lang.flag}</span>
+                  <span>{lang.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={styles.stat}>
-            <div style={styles.statValue}>3</div>
-            <div style={styles.statLabel}>Day streak</div>
+
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>Today's Progress</h2>
+            <div style={styles.stats}>
+              <div style={styles.stat}>
+                <div style={styles.statValue}>12</div>
+                <div style={styles.statLabel}>Words learned</div>
+              </div>
+              <div style={styles.stat}>
+                <div style={styles.statValue}>3</div>
+                <div style={styles.statLabel}>Day streak</div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
+
+      {/* Blacklist Tab */}
+      {activeTab === 'blacklist' && (
+        <BlacklistManager />
+      )}
 
       <div style={styles.footer}>
         <a href="#" style={styles.link}>Settings</a>
@@ -128,6 +162,27 @@ const styles = {
     minHeight: '400px',
     backgroundColor: '#ffffff',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  tabs: {
+    display: 'flex',
+    borderBottom: '1px solid #e5e7eb',
+    marginBottom: '20px',
+  },
+  tab: {
+    flex: 1,
+    padding: '12px',
+    background: 'none',
+    border: 'none',
+    borderBottom: '2px solid transparent',
+    color: '#6b7280',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  tabActive: {
+    color: '#3b82f6',
+    borderBottomColor: '#3b82f6',
   },
   loading: {
     display: 'flex',

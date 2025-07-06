@@ -152,6 +152,11 @@
               0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
+.fluent-control-flag {
+  font-size: 28px;
+  line-height: 1;
+}
+
 /* Control menu */
 .fluent-control-menu {
   position: absolute;
@@ -161,12 +166,13 @@
   border-radius: 12px;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 
               0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  padding: 8px;
-  min-width: 200px;
+  padding: 12px;
+  min-width: 280px;
   opacity: 0;
   transform: translateY(10px) scale(0.95);
   transition: all 0.2s ease;
   pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .fluent-control-menu.visible {
@@ -175,21 +181,88 @@
   pointer-events: auto;
 }
 
+.fluent-control-menu-section {
+  margin-bottom: 8px;
+}
+
+.fluent-control-menu-section:last-child {
+  margin-bottom: 0;
+}
+
+.fluent-control-menu-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.fluent-control-language-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.fluent-control-lang-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 11px;
+  color: #374151;
+  font-family: inherit;
+}
+
+.fluent-control-lang-btn:hover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.fluent-control-lang-btn.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.fluent-control-lang-btn span:first-child {
+  font-size: 20px;
+}
+
+.fluent-control-menu-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 8px -12px;
+}
+
 .fluent-control-menu-item {
-  padding: 8px 12px;
+  padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   transition: background 0.2s ease;
   color: #374151;
   font-size: 14px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .fluent-control-menu-item:hover {
   background: #f3f4f6;
+}
+
+.fluent-control-menu-item span:first-child {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
 }
 
 /* Paused state */

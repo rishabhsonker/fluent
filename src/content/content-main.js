@@ -44,7 +44,27 @@
     }
   };
 
-  const BLOCKED_PATTERNS = [/\.gov$/, /bank/i, /health/i, /medical/i];
+  // Comprehensive blacklist patterns
+  const BLOCKED_PATTERNS = [
+    // Banking and financial
+    /\.bank/i, /banking/i, /paypal\.com$/, /venmo\.com$/, /coinbase\.com$/,
+    /chase\.com$/, /wellsfargo\.com$/, /bankofamerica\.com$/, /citi\.com$/,
+    
+    // Government
+    /\.gov$/, /\.gov\./, /\.mil$/,
+    
+    // Healthcare
+    /healthcare/i, /hospital/i, /medical/i, /patient/i, /mychart/i,
+    
+    // Authentication
+    /\/login/i, /\/signin/i, /\/signup/i, /\/auth/i,
+    
+    // Shopping checkout
+    /checkout/i, /payment/i, /billing/i, /\/cart\//,
+    
+    // Developer
+    /localhost/, /127\.0\.0\.1/, /0\.0\.0\.0/
+  ];
 
   // ===== Tooltip Class =====
   class Tooltip {
@@ -265,6 +285,102 @@
     }
   }
 
+  // ===== PageControl Class =====
+  class PageControl {
+    constructor(settings = {}) {
+      this.settings = settings;
+      this.isExpanded = false;
+      this.element = null;
+      this.menuElement = null;
+      this.init();
+    }
+
+    init() {
+      this.element = document.createElement('div');
+      this.element.className = 'fluent-control';
+      this.element.innerHTML = `
+        <button class="fluent-control-button">
+          <span class="fluent-control-flag">${this.getLanguageFlag()}</span>
+        </button>
+      `;
+
+      this.menuElement = document.createElement('div');
+      this.menuElement.className = 'fluent-control-menu';
+      this.menuElement.innerHTML = this.renderMenu();
+      this.element.appendChild(this.menuElement);
+
+      document.body.appendChild(this.element);
+      this.bindEvents();
+    }
+
+    getLanguageFlag() {
+      const flags = { spanish: '🇪🇸', french: '🇫🇷', german: '🇩🇪' };
+      return flags[this.settings.targetLanguage || 'spanish'] || '🌐';
+    }
+
+    renderMenu() {
+      return `
+        <div class="fluent-control-menu-section">
+          <div class="fluent-control-menu-label">Language</div>
+          <div class="fluent-control-language-buttons">
+            <button class="fluent-control-lang-btn" data-lang="spanish">
+              <span>🇪🇸</span><span>Spanish</span>
+            </button>
+            <button class="fluent-control-lang-btn" data-lang="french">
+              <span>🇫🇷</span><span>French</span>
+            </button>
+            <button class="fluent-control-lang-btn" data-lang="german">
+              <span>🇩🇪</span><span>German</span>
+            </button>
+          </div>
+        </div>
+        <div class="fluent-control-menu-divider"></div>
+        <div class="fluent-control-menu-item" data-action="pause-site">
+          <span>🚫</span><span>Pause this site</span>
+        </div>
+        <div class="fluent-control-menu-item" data-action="disable-site">
+          <span>❌</span><span>Disable for this site</span>
+        </div>
+      `;
+    }
+
+    bindEvents() {
+      const button = this.element.querySelector('.fluent-control-button');
+      button.addEventListener('click', () => this.toggleMenu());
+
+      this.menuElement.addEventListener('click', (e) => {
+        const langBtn = e.target.closest('.fluent-control-lang-btn');
+        if (langBtn) {
+          this.changeLanguage(langBtn.dataset.lang);
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!this.element.contains(e.target)) {
+          this.closeMenu();
+        }
+      });
+    }
+
+    toggleMenu() {
+      this.isExpanded = !this.isExpanded;
+      this.menuElement.classList.toggle('visible', this.isExpanded);
+    }
+
+    closeMenu() {
+      this.isExpanded = false;
+      this.menuElement.classList.remove('visible');
+    }
+
+    changeLanguage(lang) {
+      this.settings.targetLanguage = lang;
+      this.element.querySelector('.fluent-control-flag').textContent = this.getLanguageFlag();
+      this.closeMenu();
+      // In production, this would notify the background script
+      window.location.reload();
+    }
+  }
+
   // ===== Initialize =====
   function init() {
     // Load styles
@@ -299,11 +415,109 @@
         font-size: 12px;
         opacity: 0.8;
       }
+      /* Page control styles */
+      .fluent-control {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 2147483646;
+      }
+      .fluent-control-button {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: white;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border: 2px solid #e5e7eb;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        transition: all 0.2s;
+      }
+      .fluent-control-button:hover {
+        transform: scale(1.05);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      }
+      .fluent-control-menu {
+        position: absolute;
+        bottom: 70px;
+        right: 0;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        padding: 12px;
+        min-width: 280px;
+        opacity: 0;
+        transform: translateY(10px) scale(0.95);
+        transition: all 0.2s;
+        pointer-events: none;
+      }
+      .fluent-control-menu.visible {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+      }
+      .fluent-control-menu-section {
+        margin-bottom: 8px;
+      }
+      .fluent-control-menu-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+      }
+      .fluent-control-language-buttons {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+      .fluent-control-lang-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 10px 6px;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        background: white;
+        cursor: pointer;
+        font-size: 11px;
+        color: #374151;
+      }
+      .fluent-control-lang-btn:hover {
+        border-color: #3b82f6;
+        background: #eff6ff;
+      }
+      .fluent-control-menu-divider {
+        height: 1px;
+        background: #e5e7eb;
+        margin: 8px -12px;
+      }
+      .fluent-control-menu-item {
+        padding: 10px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        color: #374151;
+      }
+      .fluent-control-menu-item:hover {
+        background: #f3f4f6;
+      }
     `;
     document.head.appendChild(style);
 
     // Initialize tooltip
     new Tooltip();
+
+    // Initialize page control
+    new PageControl({ targetLanguage: 'spanish' });
 
     // Process content
     if (document.readyState === 'loading') {
