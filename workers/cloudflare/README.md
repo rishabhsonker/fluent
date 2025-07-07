@@ -155,11 +155,6 @@ Generate AI context explanations (requires auth).
 - User pays Microsoft directly
 - Still subject to request rate limits
 
-### Premium (Coming Soon)
-- Unlimited translations
-- Priority processing
-- Advanced features
-
 ## Caching Strategy
 
 ### Multi-Tier Cache

@@ -31,7 +31,6 @@ Learn Spanish, French, or German naturally while browsing the web. Fluent intell
 - **⚖️ Minimal Permissions** - Only requests access to sites you approve
 - **💰 Free Tier** - 50 words/day at no cost
 - **🔑 BYOK Option** - Use your own API key for unlimited translations
-- **💳 Premium Coming Soon** - $4.99/month for unlimited features
 
 ## 📦 Installation
 
@@ -85,7 +84,6 @@ Learn Spanish, French, or German naturally while browsing the web. Fluent intell
 ### Daily Usage Limits
 - **Free Users**: 50 word translations per day
 - **BYOK Users**: Unlimited translations with your own API key
-- **Premium Users**: Unlimited translations (coming soon)
 
 ## 🔑 BYOK (Bring Your Own Key) Setup
 
