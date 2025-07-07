@@ -366,10 +366,4 @@ interface SiteConfig {
     CONFIG,
     cleanup
   };
-
-  }, {
-    critical: false,
-    retry: true,
-    context: { url: window.location.href }
-  });
 })();

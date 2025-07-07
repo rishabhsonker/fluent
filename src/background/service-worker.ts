@@ -373,29 +373,6 @@ chrome.action.onClicked.addListener(async (tab: chrome.tabs.Tab) => {
   }
 });
 
-// Get stored API key
-async function getApiKey(): Promise<{ apiKey: string }> {
-  try {
-    const { simpleCrypto } = await import('../lib/simpleCrypto.js');
-    const apiKey = await simpleCrypto.getApiKey();
-    return { apiKey: apiKey || '' };
-  } catch (error) {
-    logger.error('Error getting API key', error);
-    return { apiKey: '' };
-  }
-}
-
-// Set API key
-async function setApiKey(apiKey: string | null): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { simpleCrypto } = await import('../lib/simpleCrypto.js');
-    await simpleCrypto.storeApiKey(apiKey);
-    return { success: true };
-  } catch (error) {
-    logger.error('Error setting API key', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
 
 // Get daily usage count
 async function getDailyUsage(): Promise<{ count: number; date: string }> {
@@ -516,24 +493,24 @@ setInterval(() => {
 }, 60000); // Check every minute
 
 // Get API key
-async function getApiKey(): Promise<{ apiKey: string | null }> {
+async function getApiKey(): Promise<{ apiKey: string }> {
   try {
     const key = await secureCrypto.getApiKey();
-    return { apiKey: key };
+    return { apiKey: key || '' };
   } catch (error) {
     logger.error('Error getting API key:', error);
-    return { apiKey: null };
+    return { apiKey: '' };
   }
 }
 
 // Set API key
-async function setApiKey(apiKey: string | null): Promise<{ success: boolean }> {
+async function setApiKey(apiKey: string | null): Promise<{ success: boolean; error?: string }> {
   try {
     await secureCrypto.storeApiKey(apiKey);
     return { success: true };
   } catch (error) {
     logger.error('Error setting API key:', error);
-    throw error;
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
