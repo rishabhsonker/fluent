@@ -39,6 +39,8 @@ interface SiteConfig {
 (async function() {
   'use strict';
 
+  console.log('Fluent: Content script loaded');
+
   // Initialize anti-fingerprinting
   antiFingerprint.initialize();
   
@@ -248,6 +250,8 @@ interface SiteConfig {
   // Initialize components and styles
   async function initializeExtension(): Promise<void> {
     try {
+      console.log('Fluent: Initializing extension...');
+      
       // Load CSS
       const link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -258,6 +262,7 @@ interface SiteConfig {
       const storageModule = await import('../lib/storage.js');
       const storage = storageModule.getStorage();
       const settings = await storage.getSettings();
+      console.log('Fluent: Settings loaded:', settings);
       
       // Initialize Tooltip with storage
       const tooltipModule = await import('./tooltip');
@@ -277,6 +282,7 @@ interface SiteConfig {
   }
   
   // Initialize when DOM is ready
+  console.log('Fluent: Document readyState:', document.readyState);
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeExtension);
   } else {

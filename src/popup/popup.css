@@ -1,0 +1,445 @@
+/* Fluent Popup Styles */
+
+/* Base reset */
+body {
+  width: 350px;
+  min-height: 400px;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f9fafb;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Base container */
+.fluent-container {
+  width: 350px;
+  min-height: 400px;
+  background-color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Loading state */
+.fluent-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 400px;
+  font-size: 16px;
+  color: #666;
+}
+
+/* Header */
+.fluent-header {
+  padding: 24px 24px 16px;
+  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.fluent-title {
+  margin: 0 0 4px 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.fluent-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* Tabs */
+.fluent-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  margin: 0;
+  padding: 0;
+}
+
+.fluent-tab {
+  flex: 1;
+  padding: 12px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.fluent-tab:hover {
+  color: #374151;
+}
+
+.fluent-tab-active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+}
+
+/* Sections */
+.fluent-section {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.fluent-section:last-child {
+  border-bottom: none;
+}
+
+.fluent-section-title {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* Site control */
+.fluent-site-control {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fluent-site-info {
+  flex: 1;
+}
+
+.fluent-site-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.fluent-site-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+/* Buttons */
+.fluent-button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.fluent-button-primary {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.fluent-button-primary:hover {
+  background-color: #2563eb;
+}
+
+.fluent-button-danger {
+  background-color: #ef4444;
+  color: white;
+}
+
+.fluent-button-danger:hover {
+  background-color: #dc2626;
+}
+
+/* Language grid */
+.fluent-language-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.fluent-lang-button {
+  padding: 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.fluent-lang-button:hover {
+  border-color: #d1d5db;
+  background-color: #f9fafb;
+}
+
+.fluent-lang-button-active {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.fluent-flag {
+  font-size: 24px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* Stats */
+.fluent-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.fluent-stat {
+  text-align: center;
+}
+
+.fluent-stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #3b82f6;
+}
+
+.fluent-stat-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+/* Progress info */
+.fluent-progress-info {
+  background-color: #f9fafb;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.fluent-progress-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.fluent-progress-item:last-child {
+  margin-bottom: 0;
+}
+
+.fluent-progress-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.fluent-progress-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.fluent-no-stats {
+  text-align: center;
+  color: #6b7280;
+  padding: 24px;
+  font-size: 14px;
+}
+
+/* Footer */
+.fluent-footer {
+  padding: 16px 24px;
+  text-align: center;
+  border-top: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+.fluent-link {
+  color: #3b82f6;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fluent-link:hover {
+  text-decoration: underline;
+}
+
+.fluent-separator {
+  margin: 0 8px;
+  color: #d1d5db;
+}
+
+/* Settings Modal */
+.fluent-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.fluent-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 320px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.fluent-modal-header {
+  padding: 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.fluent-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.fluent-modal-content {
+  padding: 20px;
+}
+
+.fluent-input-group {
+  margin-bottom: 16px;
+}
+
+.fluent-input-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 4px;
+}
+
+.fluent-input-help {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.fluent-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.fluent-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.fluent-input-error {
+  border-color: #ef4444;
+}
+
+.fluent-error-message {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.fluent-modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fluent-button-secondary {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.fluent-button-secondary:hover {
+  background-color: #e5e7eb;
+}
+
+/* Success message */
+.fluent-success {
+  background-color: #10b981;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* Info box */
+.fluent-info-box {
+  background-color: #f3f4f6;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.fluent-info-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #1f2937;
+}
+
+/* Blacklist manager */
+.fluent-blacklist-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.fluent-blacklist-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fluent-blacklist-item:last-child {
+  border-bottom: none;
+}
+
+.fluent-blacklist-domain {
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.fluent-remove-button {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+}
+
+.fluent-remove-button:hover {
+  background-color: #fef2f2;
+  border-radius: 4px;
+}
+
+.fluent-add-domain {
+  display: flex;
+  gap: 8px;
+}
+
+.fluent-empty-state {
+  text-align: center;
+  padding: 24px;
+  color: #6b7280;
+  font-size: 14px;
+}

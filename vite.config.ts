@@ -13,6 +13,14 @@ export default defineConfig({
         if (!existsSync('dist')) {
           mkdirSync('dist', { recursive: true });
         }
+        
+        // Copy popup CSS
+        if (existsSync('src/popup/popup.css')) {
+          copyFileSync(
+            resolve(__dirname, 'src/popup/popup.css'),
+            resolve(__dirname, 'dist/popup.css')
+          );
+        }
 
         // Copy manifest
         copyFileSync(
