@@ -4,7 +4,7 @@ compatibility_date = "2024-01-01"
 
 # KV Namespace for caching translations
 kv_namespaces = [
-  { binding = "TRANSLATION_CACHE", id = "your-kv-namespace-id" }
+  { binding = "TRANSLATION_CACHE", id = "90eca25c86964d90b4421803ce41094c", preview_id = "d5bd562d385b4dde947f290af8fe553b" }
 ]
 
 # Environment variables (set in Cloudflare dashboard)

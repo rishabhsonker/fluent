@@ -1,10 +1,10 @@
-// Blacklist.js - Site blocking and exclusion management
+// Blacklist.ts - Site blocking and exclusion management
 'use strict';
 
-import { getStorage } from './storage.js';
+import { storage } from './storage';
 
 // Default blacklisted patterns - sensitive sites that should never be translated
-const DEFAULT_BLACKLIST = [
+const DEFAULT_BLACKLIST: RegExp[] = [
   // Banking and financial
   /\.bank/i,
   /banking/i,
@@ -105,8 +105,37 @@ const DEFAULT_BLACKLIST = [
   /nsfw/i
 ];
 
+interface BlacklistCategory {
+  name: string;
+  description: string;
+  enabled: boolean;
+  patterns: RegExp[];
+}
+
+interface BlacklistCategories {
+  [key: string]: BlacklistCategory;
+}
+
+interface BlacklistSettings {
+  categories: { [key: string]: boolean };
+  customSites: string[];
+}
+
+interface BlacklistExport {
+  version: number;
+  categories: { [key: string]: boolean };
+  customSites: string[];
+  exportDate: string;
+}
+
+interface BlacklistStats {
+  totalPatterns: number;
+  customSites: number;
+  categories: number;
+}
+
 // User-customizable blacklist categories
-export const BLACKLIST_CATEGORIES = {
+export const BLACKLIST_CATEGORIES: BlacklistCategories = {
   FINANCIAL: {
     name: 'Financial & Banking',
     description: 'Banks, payment processors, and financial services',
@@ -191,21 +220,26 @@ export const BLACKLIST_CATEGORIES = {
 };
 
 export class BlacklistManager {
+  private cache: Set<RegExp> | null;
+  private customPatterns: RegExp[];
+
   constructor() {
-    this.storage = getStorage();
     this.cache = null;
     this.customPatterns = [];
     this.init();
   }
 
-  async init() {
+  async init(): Promise<void> {
     // Load custom blacklist from storage
-    const stored = await this.storage.get('blacklist_settings', {
+    const stored = await storage.get<BlacklistSettings>('blacklist_settings', {
       categories: {},
       customSites: []
     });
     
-    this.customPatterns = stored.customSites.map(site => {
+    // Handle null case
+    const settings = stored || { categories: {}, customSites: [] };
+    
+    this.customPatterns = settings.customSites.map((site: string) => {
       try {
         return new RegExp(site, 'i');
       } catch (e) {
@@ -215,37 +249,38 @@ export class BlacklistManager {
     });
     
     // Build cache
-    this.buildCache();
+    await this.buildCache();
   }
 
-  buildCache() {
-    this.cache = new Set();
+  private async buildCache(): Promise<void> {
+    this.cache = new Set<RegExp>();
     
     // Add default patterns
     DEFAULT_BLACKLIST.forEach(pattern => {
-      this.cache.add(pattern);
+      this.cache!.add(pattern);
     });
     
     // Add category patterns if enabled
-    const settings = this.storage.get('blacklist_settings', { categories: {} });
+    const stored = await storage.get<BlacklistSettings>('blacklist_settings', { categories: {}, customSites: [] });
+    const settings = stored || { categories: {}, customSites: [] };
     
     for (const [key, category] of Object.entries(BLACKLIST_CATEGORIES)) {
       const isEnabled = settings.categories[key] !== false && category.enabled;
       if (isEnabled) {
         category.patterns.forEach(pattern => {
-          this.cache.add(pattern);
+          this.cache!.add(pattern);
         });
       }
     }
     
     // Add custom patterns
     this.customPatterns.forEach(pattern => {
-      this.cache.add(pattern);
+      this.cache!.add(pattern);
     });
   }
 
   // Check if a URL is blacklisted
-  isBlacklisted(url) {
+  isBlacklisted(url: string): boolean {
     try {
       const urlObj = new URL(url);
       const hostname = urlObj.hostname;
@@ -253,9 +288,11 @@ export class BlacklistManager {
       const fullUrl = hostname + pathname;
       
       // Check against all patterns
-      for (const pattern of this.cache) {
-        if (pattern.test(fullUrl) || pattern.test(hostname)) {
-          return true;
+      if (this.cache) {
+        for (const pattern of Array.from(this.cache)) {
+          if (pattern.test(fullUrl) || pattern.test(hostname)) {
+            return true;
+          }
         }
       }
       
@@ -267,46 +304,50 @@ export class BlacklistManager {
   }
 
   // Check if current site should be processed
-  shouldProcessSite() {
+  shouldProcessSite(): boolean {
     const url = window.location.href;
     return !this.isBlacklisted(url);
   }
 
   // Add a custom site to blacklist
-  async addSite(site) {
-    const settings = await this.storage.get('blacklist_settings', {
+  async addSite(site: string): Promise<void> {
+    const stored = await storage.get<BlacklistSettings>('blacklist_settings', {
       categories: {},
       customSites: []
     });
     
+    const settings = stored || { categories: {}, customSites: [] };
+    
     if (!settings.customSites.includes(site)) {
       settings.customSites.push(site);
-      await this.storage.set('blacklist_settings', settings);
+      await storage.set('blacklist_settings', settings);
       
       // Update cache
       try {
         const pattern = new RegExp(site, 'i');
         this.customPatterns.push(pattern);
-        this.cache.add(pattern);
+        this.cache?.add(pattern);
       } catch (e) {
         const pattern = new RegExp(site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
         this.customPatterns.push(pattern);
-        this.cache.add(pattern);
+        this.cache?.add(pattern);
       }
     }
   }
 
   // Remove a custom site from blacklist
-  async removeSite(site) {
-    const settings = await this.storage.get('blacklist_settings', {
+  async removeSite(site: string): Promise<void> {
+    const stored = await storage.get<BlacklistSettings>('blacklist_settings', {
       categories: {},
       customSites: []
     });
     
+    const settings = stored || { categories: {}, customSites: [] };
+    
     const index = settings.customSites.indexOf(site);
     if (index > -1) {
       settings.customSites.splice(index, 1);
-      await this.storage.set('blacklist_settings', settings);
+      await storage.set('blacklist_settings', settings);
       
       // Rebuild cache
       await this.init();
@@ -314,37 +355,42 @@ export class BlacklistManager {
   }
 
   // Get all custom sites
-  async getCustomSites() {
-    const settings = await this.storage.get('blacklist_settings', {
+  async getCustomSites(): Promise<string[]> {
+    const stored = await storage.get<BlacklistSettings>('blacklist_settings', {
       categories: {},
       customSites: []
     });
     
+    const settings = stored || { categories: {}, customSites: [] };
     return settings.customSites;
   }
 
   // Toggle a category
-  async toggleCategory(categoryKey, enabled) {
-    const settings = await this.storage.get('blacklist_settings', {
+  async toggleCategory(categoryKey: string, enabled: boolean): Promise<void> {
+    const stored = await storage.get<BlacklistSettings>('blacklist_settings', {
       categories: {},
       customSites: []
     });
     
+    const settings = stored || { categories: {}, customSites: [] };
+    
     settings.categories[categoryKey] = enabled;
-    await this.storage.set('blacklist_settings', settings);
+    await storage.set('blacklist_settings', settings);
     
     // Rebuild cache
-    this.buildCache();
+    await this.buildCache();
   }
 
   // Get category states
-  async getCategoryStates() {
-    const settings = await this.storage.get('blacklist_settings', {
+  async getCategoryStates(): Promise<{ [key: string]: boolean }> {
+    const stored = await storage.get<BlacklistSettings>('blacklist_settings', {
       categories: {},
       customSites: []
     });
     
-    const states = {};
+    const settings = stored || { categories: {}, customSites: [] };
+    
+    const states: { [key: string]: boolean } = {};
     for (const [key, category] of Object.entries(BLACKLIST_CATEGORIES)) {
       states[key] = settings.categories[key] !== undefined 
         ? settings.categories[key] 
@@ -355,11 +401,13 @@ export class BlacklistManager {
   }
 
   // Export blacklist for backup
-  async exportBlacklist() {
-    const settings = await this.storage.get('blacklist_settings', {
+  async exportBlacklist(): Promise<BlacklistExport> {
+    const stored = await storage.get<BlacklistSettings>('blacklist_settings', {
       categories: {},
       customSites: []
     });
+    
+    const settings = stored || { categories: {}, customSites: [] };
     
     return {
       version: 1,
@@ -370,12 +418,12 @@ export class BlacklistManager {
   }
 
   // Import blacklist from backup
-  async importBlacklist(data) {
+  async importBlacklist(data: BlacklistExport): Promise<void> {
     if (data.version !== 1) {
       throw new Error('Unsupported blacklist version');
     }
     
-    await this.storage.set('blacklist_settings', {
+    await storage.set('blacklist_settings', {
       categories: data.categories || {},
       customSites: data.customSites || []
     });
@@ -385,9 +433,9 @@ export class BlacklistManager {
   }
 
   // Get statistics
-  getStats() {
+  getStats(): BlacklistStats {
     return {
-      totalPatterns: this.cache.size,
+      totalPatterns: this.cache?.size || 0,
       customSites: this.customPatterns.length,
       categories: Object.keys(BLACKLIST_CATEGORIES).length
     };
@@ -395,9 +443,9 @@ export class BlacklistManager {
 }
 
 // Singleton instance
-let blacklistInstance = null;
+let blacklistInstance: BlacklistManager | null = null;
 
-export function getBlacklist() {
+export function getBlacklist(): BlacklistManager {
   if (!blacklistInstance) {
     blacklistInstance = new BlacklistManager();
   }
@@ -405,7 +453,7 @@ export function getBlacklist() {
 }
 
 // Quick check function for content scripts
-export async function shouldProcessCurrentSite() {
+export async function shouldProcessCurrentSite(): Promise<boolean> {
   const blacklist = getBlacklist();
   return blacklist.shouldProcessSite();
 }

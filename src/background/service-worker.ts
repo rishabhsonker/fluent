@@ -2,9 +2,43 @@
 'use strict';
 
 import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS } from '../lib/constants.js';
+import { validator } from '../lib/validator.js';
+import { logger } from '../lib/logger.js';
+import { securityManager } from '../lib/security.js';
+import { secureCrypto } from '../lib/secureCrypto.js';
+import { ExtensionAuthenticator } from '../lib/auth.js';
+import { contentScriptManager } from './contentScriptManager.js';
+import { offlineManager } from '../lib/offlineManager.js';
+import type { UserSettings, SiteSettings, LanguageCode } from '../types';
+
+interface CacheStats {
+  hits: number;
+  misses: number;
+  size: number;
+}
+
+interface ServiceWorkerState {
+  settings: UserSettings | null;
+  siteSettings: Map<string, SiteSettings>;
+  translationCache: Map<string, string>;
+  cacheStats: CacheStats;
+}
+
+interface PerformanceMetrics {
+  processingTime?: number;
+  wordsReplaced?: number;
+  error?: boolean;
+}
+
+interface DailyStats {
+  pageLoads: number;
+  totalProcessingTime: number;
+  wordsReplaced: number;
+  errors: number;
+}
 
 // State management
-const state = {
+const state: ServiceWorkerState = {
   settings: null,
   siteSettings: new Map(),
   translationCache: new Map(),
@@ -16,8 +50,8 @@ const state = {
 };
 
 // Initialize on install
-chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('Fluent: Extension installed', details.reason);
+chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledDetails) => {
+  logger.info('Extension installed', details.reason);
   
   // Set default settings
   if (details.reason === 'install') {
@@ -25,6 +59,14 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       [STORAGE_KEYS.USER_SETTINGS]: DEFAULT_SETTINGS,
       [STORAGE_KEYS.SITE_SETTINGS]: {}
     });
+    
+    // Initialize authentication
+    await ExtensionAuthenticator.initialize();
+  }
+  
+  // Migrate API keys from old storage on update
+  if (details.reason === 'update') {
+    await secureCrypto.migrateFromOldStorage();
   }
   
   // Load settings
@@ -32,33 +74,48 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 });
 
 // Load settings from storage
-async function loadSettings() {
+async function loadSettings(): Promise<void> {
   try {
     const result = await chrome.storage.sync.get([
       STORAGE_KEYS.USER_SETTINGS,
       STORAGE_KEYS.SITE_SETTINGS
     ]);
     
-    state.settings = result[STORAGE_KEYS.USER_SETTINGS] || DEFAULT_SETTINGS;
-    const siteSettings = result[STORAGE_KEYS.SITE_SETTINGS] || {};
-    state.siteSettings = new Map(Object.entries(siteSettings));
+    // Validate loaded settings
+    state.settings = validator.validateSettings(result[STORAGE_KEYS.USER_SETTINGS] || DEFAULT_SETTINGS);
     
-    console.log('Fluent: Settings loaded', state.settings);
+    // Validate site settings
+    const siteSettings = result[STORAGE_KEYS.SITE_SETTINGS] || {};
+    state.siteSettings = new Map();
+    for (const [domain, settings] of Object.entries(siteSettings) as [string, any][]) {
+      const validDomain = validator.validateDomain(domain);
+      if (validDomain) {
+        state.siteSettings.set(validDomain, validator.validateSiteSettings(settings));
+      }
+    }
+    
+    logger.debug('Settings loaded', state.settings);
   } catch (error) {
-    console.error('Fluent: Error loading settings', error);
+    logger.error('Error loading settings', error);
   }
 }
 
-// Message handling
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+// Secure message handling
+chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
   // Handle async responses
   (async () => {
     try {
+      // Validate message security
+      securityManager.validateMessage(request, sender);
+      
       const response = await handleMessage(request, sender);
-      sendResponse(response);
+      
+      // Create secure response
+      const secureResponse = await securityManager.createSecureMessage('response', response);
+      sendResponse(secureResponse);
     } catch (error) {
-      console.error('Fluent: Message handler error', error);
-      sendResponse({ error: error.message });
+      logger.error('Message handler error', error);
+      sendResponse({ error: error instanceof Error ? error.message : 'Unknown error', secure: false });
     }
   })();
   
@@ -66,7 +123,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Handle different message types
-async function handleMessage(request, sender) {
+async function handleMessage(request: any, sender: chrome.runtime.MessageSender): Promise<any> {
   switch (request.type) {
     case 'GET_SETTINGS':
       return getSettingsForTab(sender.tab);
@@ -90,7 +147,15 @@ async function handleMessage(request, sender) {
       return getApiKey();
       
     case 'SET_API_KEY':
-      return setApiKey(request.apiKey);
+      const validKey = validator.validateApiKey(request.apiKey);
+      if (!validKey && request.apiKey) {
+        throw new Error('Invalid API key format');
+      }
+      return setApiKey(validKey);
+      
+    case 'ENABLE_FOR_SITE':
+      const enabled = await contentScriptManager.enableForCurrentTab();
+      return { success: enabled };
       
     case 'GET_DAILY_USAGE':
       return getDailyUsage();
@@ -101,13 +166,16 @@ async function handleMessage(request, sender) {
     case 'GENERATE_CONTEXT':
       return generateContext(request.prompt);
       
+    case 'GET_LEARNING_STATS':
+      return getLearningStats();
+      
     default:
       throw new Error(`Unknown message type: ${request.type}`);
   }
 }
 
 // Get settings for a specific tab
-async function getSettingsForTab(tab) {
+async function getSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<any> {
   if (!tab || !tab.url) {
     return { settings: state.settings, siteEnabled: true };
   }
@@ -116,12 +184,12 @@ async function getSettingsForTab(tab) {
   const hostname = url.hostname;
   
   // Check site-specific settings
-  const siteSettings = state.siteSettings.get(hostname) || {};
+  const siteSettings = state.siteSettings.get(hostname) || {} as SiteSettings;
   const siteEnabled = siteSettings.enabled !== false;
   
   // Check if globally paused
   const now = Date.now();
-  const globallyPaused = state.settings.pausedUntil && state.settings.pausedUntil > now;
+  const globallyPaused = state.settings?.pausedUntil && state.settings.pausedUntil > now;
   
   return {
     settings: { ...state.settings, ...siteSettings },
@@ -131,8 +199,11 @@ async function getSettingsForTab(tab) {
 }
 
 // Update global settings
-async function updateSettings(newSettings) {
-  state.settings = { ...state.settings, ...newSettings };
+async function updateSettings(newSettings: Partial<UserSettings>): Promise<{ success: boolean }> {
+  // Validate settings
+  const validated = validator.validateSettings({ ...state.settings, ...newSettings });
+  state.settings = validated;
+  
   await chrome.storage.sync.set({
     [STORAGE_KEYS.USER_SETTINGS]: state.settings
   });
@@ -140,8 +211,16 @@ async function updateSettings(newSettings) {
 }
 
 // Update site-specific settings
-async function updateSiteSettings(hostname, settings) {
-  state.siteSettings.set(hostname, settings);
+async function updateSiteSettings(hostname: string, settings: Partial<SiteSettings>): Promise<{ success: boolean }> {
+  // Validate domain
+  const validDomain = validator.validateDomain(hostname);
+  if (!validDomain) {
+    throw new Error('Invalid domain');
+  }
+  
+  // Validate settings
+  const validatedSettings = validator.validateSiteSettings(settings);
+  state.siteSettings.set(validDomain, validatedSettings);
   
   // Convert Map to object for storage
   const siteSettingsObj = Object.fromEntries(state.siteSettings);
@@ -153,13 +232,21 @@ async function updateSiteSettings(hostname, settings) {
 }
 
 // Get translations (with caching)
-async function getTranslations(words, language) {
-  const translations = {};
-  const wordsToTranslate = [];
+async function getTranslations(words: string[], language: string): Promise<any> {
+  // Validate inputs
+  const validLanguage = validator.validateLanguage(language);
+  const validWords = validator.validateWordList(words);
+  
+  if (validWords.length === 0) {
+    return { translations: {}, error: 'No valid words to translate' };
+  }
+  
+  const translations: Record<string, string> = {};
+  const wordsToTranslate: string[] = [];
   
   // Check cache first
-  for (const word of words) {
-    const cacheKey = `${language}:${word.toLowerCase()}`;
+  for (const word of validWords) {
+    const cacheKey = `${validLanguage}:${word.toLowerCase()}`;
     const cached = state.translationCache.get(cacheKey);
     
     if (cached) {
@@ -175,7 +262,7 @@ async function getTranslations(words, language) {
   if (wordsToTranslate.length > 0) {
     // In production, this would call the translation API
     const { MOCK_TRANSLATIONS } = await import('../lib/constants.js');
-    const mockData = MOCK_TRANSLATIONS[language] || {};
+    const mockData = MOCK_TRANSLATIONS[language as LanguageCode] || {};
     
     for (const word of wordsToTranslate) {
       const translation = mockData[word.toLowerCase()] || word;
@@ -201,14 +288,14 @@ async function getTranslations(words, language) {
 }
 
 // Log performance metrics
-async function logPerformance(metrics) {
+async function logPerformance(metrics: PerformanceMetrics): Promise<{ success: boolean }> {
   // Store performance data for analysis
   const today = new Date().toISOString().split('T')[0];
   const storageKey = `${STORAGE_KEYS.DAILY_STATS}_${today}`;
   
   try {
     const result = await chrome.storage.local.get(storageKey);
-    const stats = result[storageKey] || {
+    const stats: DailyStats = result[storageKey] || {
       pageLoads: 0,
       totalProcessingTime: 0,
       wordsReplaced: 0,
@@ -225,14 +312,14 @@ async function logPerformance(metrics) {
     // Clean up old stats (keep last 7 days)
     cleanupOldStats();
   } catch (error) {
-    console.error('Fluent: Error logging performance', error);
+    logger.error('Error logging performance', error);
   }
   
   return { success: true };
 }
 
 // Get cache statistics
-function getCacheStats() {
+function getCacheStats(): { cacheSize: number; hitRate: number; hits: number; misses: number } {
   const hitRate = state.cacheStats.hits / 
     (state.cacheStats.hits + state.cacheStats.misses) || 0;
   
@@ -245,17 +332,17 @@ function getCacheStats() {
 }
 
 // Clean up old statistics
-async function cleanupOldStats() {
+async function cleanupOldStats(): Promise<void> {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - 7);
   
   const keys = await chrome.storage.local.get(null);
-  const keysToRemove = [];
+  const keysToRemove: string[] = [];
   
   for (const key in keys) {
     if (key.startsWith(STORAGE_KEYS.DAILY_STATS)) {
       const dateStr = key.split('_').pop();
-      const keyDate = new Date(dateStr);
+      const keyDate = new Date(dateStr!);
       if (keyDate < cutoffDate) {
         keysToRemove.push(key);
       }
@@ -268,50 +355,50 @@ async function cleanupOldStats() {
 }
 
 // Handle extension icon click
-chrome.action.onClicked.addListener(async (tab) => {
+chrome.action.onClicked.addListener(async (tab: chrome.tabs.Tab) => {
   // Toggle extension for current site
-  const url = new URL(tab.url);
+  const url = new URL(tab.url!);
   const hostname = url.hostname;
-  const siteSettings = state.siteSettings.get(hostname) || {};
+  const siteSettings = state.siteSettings.get(hostname) || {} as SiteSettings;
   
   siteSettings.enabled = !siteSettings.enabled;
   await updateSiteSettings(hostname, siteSettings);
   
   // Notify content script
-  chrome.tabs.sendMessage(tab.id, {
-    type: 'SETTINGS_UPDATED',
-    enabled: siteSettings.enabled
-  });
+  if (tab.id) {
+    chrome.tabs.sendMessage(tab.id, {
+      type: 'SETTINGS_UPDATED',
+      enabled: siteSettings.enabled
+    });
+  }
 });
 
 // Get stored API key
-async function getApiKey() {
+async function getApiKey(): Promise<{ apiKey: string }> {
   try {
-    const result = await chrome.storage.sync.get('userApiKey');
-    return { apiKey: result.userApiKey || '' };
+    const { simpleCrypto } = await import('../lib/simpleCrypto.js');
+    const apiKey = await simpleCrypto.getApiKey();
+    return { apiKey: apiKey || '' };
   } catch (error) {
-    console.error('Fluent: Error getting API key', error);
+    logger.error('Error getting API key', error);
     return { apiKey: '' };
   }
 }
 
 // Set API key
-async function setApiKey(apiKey) {
+async function setApiKey(apiKey: string | null): Promise<{ success: boolean; error?: string }> {
   try {
-    if (apiKey) {
-      await chrome.storage.sync.set({ userApiKey: apiKey });
-    } else {
-      await chrome.storage.sync.remove('userApiKey');
-    }
+    const { simpleCrypto } = await import('../lib/simpleCrypto.js');
+    await simpleCrypto.storeApiKey(apiKey);
     return { success: true };
   } catch (error) {
-    console.error('Fluent: Error setting API key', error);
-    return { success: false, error: error.message };
+    logger.error('Error setting API key', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
 // Get daily usage count
-async function getDailyUsage() {
+async function getDailyUsage(): Promise<{ count: number; date: string }> {
   try {
     const today = new Date().toDateString();
     const result = await chrome.storage.local.get('dailyUsage');
@@ -326,13 +413,14 @@ async function getDailyUsage() {
     
     return { count: usage.count, date: usage.date };
   } catch (error) {
-    console.error('Fluent: Error getting daily usage', error);
+    logger.error('Error getting daily usage', error);
     return { count: 0, date: new Date().toDateString() };
   }
 }
 
-// Update daily usage count
-async function updateDailyUsage(increment) {
+// Update daily usage count (currently unused but kept for future use)
+// @ts-ignore - unused function
+async function updateDailyUsage(increment: number): Promise<{ count: number; date: string } | null> {
   try {
     const usage = await getDailyUsage();
     usage.count += increment;
@@ -344,16 +432,16 @@ async function updateDailyUsage(increment) {
     });
     return usage;
   } catch (error) {
-    console.error('Fluent: Error updating daily usage', error);
+    logger.error('Error updating daily usage', error);
     return null;
   }
 }
 
 // Get context explanation for a word
-async function getContextExplanation(request) {
+async function getContextExplanation(request: { word: string; translation: string; language: string; sentence: string }): Promise<any> {
   try {
     // Import context helper
-    const { contextHelper } = await import('../lib/contextHelper.js');
+    const { contextHelper } = await import('../lib/contextHelper');
     
     const explanation = await contextHelper.getExplanation(
       request.word,
@@ -364,7 +452,7 @@ async function getContextExplanation(request) {
     
     return { explanation };
   } catch (error) {
-    console.error('Fluent: Error getting context explanation', error);
+    logger.error('Error getting context explanation', error);
     return { 
       explanation: {
         error: true,
@@ -375,7 +463,7 @@ async function getContextExplanation(request) {
 }
 
 // Generate context using AI (Claude Haiku)
-async function generateContext(prompt) {
+async function generateContext(prompt: string): Promise<{ text?: string; error?: string }> {
   try {
     // Check for API key
     const apiKeyResult = await getApiKey();
@@ -402,8 +490,8 @@ async function generateContext(prompt) {
       })
     };
   } catch (error) {
-    console.error('Fluent: Error generating context', error);
-    return { error: error.message };
+    logger.error('Error generating context', error);
+    return { error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
@@ -412,20 +500,72 @@ setInterval(() => {
   // Log cache performance
   const stats = getCacheStats();
   if (stats.hitRate < PERFORMANCE_LIMITS.MIN_CACHE_HIT_RATE) {
-    console.warn('Fluent: Cache hit rate below threshold', stats.hitRate);
+    logger.warn('Cache hit rate below threshold', stats.hitRate);
   }
   
   // Check memory usage
-  if (chrome.runtime.getManifest) {
+  if (chrome.runtime.getManifest()) {
     // This is a simplified check - in production we'd use more sophisticated monitoring
     const estimatedMemory = state.translationCache.size * 100; // ~100 bytes per entry
     if (estimatedMemory > PERFORMANCE_LIMITS.MAX_MEMORY_MB * 1024 * 1024) {
-      console.warn('Fluent: Memory usage high, clearing cache');
+      logger.warn('Memory usage high, clearing cache');
       state.translationCache.clear();
       state.cacheStats = { hits: 0, misses: 0, size: 0 };
     }
   }
 }, 60000); // Check every minute
+
+// Get API key
+async function getApiKey(): Promise<{ apiKey: string | null }> {
+  try {
+    const key = await secureCrypto.getApiKey();
+    return { apiKey: key };
+  } catch (error) {
+    logger.error('Error getting API key:', error);
+    return { apiKey: null };
+  }
+}
+
+// Set API key
+async function setApiKey(apiKey: string | null): Promise<{ success: boolean }> {
+  try {
+    await secureCrypto.storeApiKey(apiKey);
+    return { success: true };
+  } catch (error) {
+    logger.error('Error setting API key:', error);
+    throw error;
+  }
+}
+
+// Get learning statistics
+async function getLearningStats(): Promise<{ stats: any }> {
+  try {
+    // Get current language from settings
+    const settings = state.settings || DEFAULT_SETTINGS;
+    const language = settings.targetLanguage || 'spanish';
+    
+    // Import storage module
+    const { getStorage } = await import('../lib/storage.js');
+    const storage = getStorage();
+    
+    // Get learning stats
+    const stats = await storage.getLearningStats(language);
+    
+    return { stats };
+  } catch (error) {
+    logger.error('Error getting learning stats', error);
+    return { 
+      stats: {
+        totalWords: 0,
+        masteredWords: 0,
+        wordsInProgress: 0,
+        wordsDueForReview: 0,
+        averageMastery: 0,
+        todayReviews: 0
+      }
+    };
+  }
+}
 
 // Export for testing
 if (typeof module !== 'undefined' && module.exports) {

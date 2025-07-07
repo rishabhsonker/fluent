@@ -1,25 +1,73 @@
 import React, { useState, useEffect } from 'react';
-import { SUPPORTED_LANGUAGES } from '../lib/constants.js';
-import BlacklistManager from './components/BlacklistManager.jsx';
-import Settings from './components/Settings.jsx';
+import { SUPPORTED_LANGUAGES } from '../lib/constants';
+import { errorBoundary } from '../lib/errorBoundaryEnhanced';
+import BlacklistManager from './components/BlacklistManager';
+import Settings from './components/Settings';
+import { ReactErrorBoundary } from './components/ErrorBoundary';
+
+interface LanguageConfig {
+  code: string;
+  name: string;
+  flag: string;
+  articles?: {
+    masculine?: string;
+    feminine?: string;
+    neuter?: string;
+    masculinePlural?: string;
+    femininePlural?: string;
+    plural?: string;
+    vowelStart?: string;
+  };
+  specialRules?: {
+    capitalizeNouns?: boolean;
+  };
+}
+
+interface ExtensionSettings {
+  targetLanguage: string;
+  wordsPerPage?: number;
+  difficulty?: string;
+}
+
+interface LearningStats {
+  totalWords: number;
+  masteredWords: number;
+  todayReviews: number;
+  wordsInProgress: number;
+  wordsDueForReview: number;
+  averageMastery: number;
+}
+
+interface ChromeMessageResponse {
+  settings?: ExtensionSettings;
+  siteEnabled?: boolean;
+  hostname?: string;
+  stats?: LearningStats;
+}
+
+type TabType = 'main' | 'blacklist';
 
 function App() {
-  const [settings, setSettings] = useState(null);
-  const [currentSite, setCurrentSite] = useState('');
-  const [siteEnabled, setSiteEnabled] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('main');
-  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<ExtensionSettings | null>(null);
+  const [currentSite, setCurrentSite] = useState<string>('');
+  const [siteEnabled, setSiteEnabled] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<TabType>('main');
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [learningStats, setLearningStats] = useState<LearningStats | null>(null);
 
   useEffect(() => {
     loadSettings();
+    loadLearningStats();
   }, []);
 
-  async function loadSettings() {
+  async function loadSettings(): Promise<void> {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-      setSettings(response.settings);
-      setSiteEnabled(response.siteEnabled);
+      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }) as ChromeMessageResponse;
+      if (response.settings) {
+        setSettings(response.settings);
+      }
+      setSiteEnabled(response.siteEnabled ?? true);
       setCurrentSite(response.hostname || 'This site');
       setLoading(false);
     } catch (error) {
@@ -28,7 +76,20 @@ function App() {
     }
   }
 
-  async function toggleSite() {
+  async function loadLearningStats(): Promise<void> {
+    try {
+      const response = await chrome.runtime.sendMessage({ 
+        type: 'GET_LEARNING_STATS'
+      }) as ChromeMessageResponse;
+      if (response.stats) {
+        setLearningStats(response.stats);
+      }
+    } catch (error) {
+      console.error('Error loading learning stats:', error);
+    }
+  }
+
+  async function toggleSite(): Promise<void> {
     const newEnabled = !siteEnabled;
     setSiteEnabled(newEnabled);
     
@@ -40,10 +101,14 @@ function App() {
     
     // Reload current tab to apply changes
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.tabs.reload(tab.id);
+    if (tab.id) {
+      chrome.tabs.reload(tab.id);
+    }
   }
 
-  async function updateLanguage(language) {
+  async function updateLanguage(language: string): Promise<void> {
+    if (!settings) return;
+    
     setSettings({ ...settings, targetLanguage: language });
     await chrome.runtime.sendMessage({
       type: 'UPDATE_SETTINGS',
@@ -52,7 +117,9 @@ function App() {
     
     // Reload current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.tabs.reload(tab.id);
+    if (tab.id) {
+      chrome.tabs.reload(tab.id);
+    }
   }
 
   if (loading || !settings) {
@@ -112,7 +179,7 @@ function App() {
           <div style={styles.section}>
             <h2 style={styles.sectionTitle}>Language</h2>
             <div style={styles.languageGrid}>
-              {Object.entries(SUPPORTED_LANGUAGES).map(([key, lang]) => (
+              {(Object.entries(SUPPORTED_LANGUAGES) as Array<[string, LanguageConfig]>).map(([key, lang]) => (
                 <button
                   key={key}
                   style={{
@@ -129,17 +196,44 @@ function App() {
           </div>
 
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Today's Progress</h2>
-            <div style={styles.stats}>
-              <div style={styles.stat}>
-                <div style={styles.statValue}>12</div>
-                <div style={styles.statLabel}>Words learned</div>
+            <h2 style={styles.sectionTitle}>Learning Progress</h2>
+            {learningStats ? (
+              <>
+                <div style={styles.stats}>
+                  <div style={styles.stat}>
+                    <div style={styles.statValue}>{learningStats.totalWords || 0}</div>
+                    <div style={styles.statLabel}>Total words</div>
+                  </div>
+                  <div style={styles.stat}>
+                    <div style={styles.statValue}>{learningStats.masteredWords || 0}</div>
+                    <div style={styles.statLabel}>Mastered</div>
+                  </div>
+                  <div style={styles.stat}>
+                    <div style={styles.statValue}>{learningStats.todayReviews || 0}</div>
+                    <div style={styles.statLabel}>Today's reviews</div>
+                  </div>
+                </div>
+                
+                <div style={styles.progressInfo}>
+                  <div style={styles.progressItem}>
+                    <span style={styles.progressLabel}>Words in progress:</span>
+                    <span style={styles.progressValue}>{learningStats.wordsInProgress || 0}</span>
+                  </div>
+                  <div style={styles.progressItem}>
+                    <span style={styles.progressLabel}>Due for review:</span>
+                    <span style={styles.progressValue}>{learningStats.wordsDueForReview || 0}</span>
+                  </div>
+                  <div style={styles.progressItem}>
+                    <span style={styles.progressLabel}>Average mastery:</span>
+                    <span style={styles.progressValue}>{Math.round(learningStats.averageMastery || 0)}%</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={styles.noStats}>
+                Start browsing to track your progress!
               </div>
-              <div style={styles.stat}>
-                <div style={styles.statValue}>3</div>
-                <div style={styles.statLabel}>Day streak</div>
-              </div>
-            </div>
+            )}
           </div>
         </>
       )}
@@ -150,7 +244,7 @@ function App() {
       )}
 
       <div style={styles.footer}>
-        <a href="#" style={styles.link} onClick={(e) => {
+        <a href="#" style={styles.link} onClick={(e: React.MouseEvent) => {
           e.preventDefault();
           setShowSettings(true);
         }}>Settings</a>
@@ -166,7 +260,7 @@ function App() {
   );
 }
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   container: {
     width: '350px',
     minHeight: '400px',
@@ -282,19 +376,52 @@ const styles = {
   },
   stats: {
     display: 'flex',
-    gap: '24px',
+    gap: '16px',
+    marginBottom: '16px',
   },
   stat: {
     flex: 1,
+    textAlign: 'center',
+    padding: '12px',
+    backgroundColor: '#f9fafb',
+    borderRadius: '8px',
   },
   statValue: {
-    fontSize: '32px',
+    fontSize: '28px',
     fontWeight: '700',
     color: '#3b82f6',
   },
   statLabel: {
     fontSize: '12px',
     color: '#6b7280',
+    marginTop: '4px',
+  },
+  progressInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  progressItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 12px',
+    backgroundColor: '#f9fafb',
+    borderRadius: '6px',
+    fontSize: '14px',
+  },
+  progressLabel: {
+    color: '#6b7280',
+  },
+  progressValue: {
+    color: '#374151',
+    fontWeight: '600',
+  },
+  noStats: {
+    textAlign: 'center',
+    color: '#6b7280',
+    padding: '24px',
+    fontSize: '14px',
   },
   footer: {
     padding: '16px 24px',

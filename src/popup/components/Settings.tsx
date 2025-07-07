@@ -1,32 +1,44 @@
 import React, { useState, useEffect } from 'react';
 
-function Settings({ onClose }) {
-  const [apiKey, setApiKey] = useState('');
-  const [dailyUsage, setDailyUsage] = useState(0);
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedMessage, setSavedMessage] = useState('');
+interface SettingsProps {
+  onClose: () => void;
+}
+
+interface APIKeyResponse {
+  apiKey?: string;
+}
+
+interface DailyUsageResponse {
+  count?: number;
+}
+
+const Settings: React.FC<SettingsProps> = ({ onClose }) => {
+  const [apiKey, setApiKey] = useState<string>('');
+  const [dailyUsage, setDailyUsage] = useState<number>(0);
+  const [showApiKey, setShowApiKey] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [savedMessage, setSavedMessage] = useState<string>('');
 
   useEffect(() => {
     loadSettings();
   }, []);
 
-  async function loadSettings() {
+  async function loadSettings(): Promise<void> {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_API_KEY' });
+      const response = await chrome.runtime.sendMessage({ type: 'GET_API_KEY' }) as APIKeyResponse;
       if (response.apiKey) {
         setApiKey(response.apiKey);
       }
       
       // Get daily usage
-      const usage = await chrome.runtime.sendMessage({ type: 'GET_DAILY_USAGE' });
+      const usage = await chrome.runtime.sendMessage({ type: 'GET_DAILY_USAGE' }) as DailyUsageResponse;
       setDailyUsage(usage.count || 0);
     } catch (error) {
       console.error('Error loading API settings:', error);
     }
   }
 
-  async function saveApiKey() {
+  async function saveApiKey(): Promise<void> {
     setSaving(true);
     try {
       await chrome.runtime.sendMessage({
@@ -42,7 +54,7 @@ function Settings({ onClose }) {
     setSaving(false);
   }
 
-  async function removeApiKey() {
+  async function removeApiKey(): Promise<void> {
     if (confirm('Are you sure you want to remove your API key?')) {
       setSaving(true);
       try {
@@ -59,6 +71,16 @@ function Settings({ onClose }) {
       setSaving(false);
     }
   }
+
+  const handleWordsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+    // TODO: Implement words per page setting
+    console.log('Words per page:', e.target.value);
+  };
+
+  const handleDifficultyChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+    // TODO: Implement difficulty setting
+    console.log('Difficulty:', e.target.value);
+  };
 
   return (
     <div style={styles.container}>
@@ -142,7 +164,7 @@ function Settings({ onClose }) {
           <div style={styles.helpSection}>
             <h5 style={styles.helpTitle}>How to get an API key:</h5>
             <ol style={styles.helpList}>
-              <li>Go to <a href="https://azure.microsoft.com/services/cognitive-services/translator/" target="_blank" style={styles.link}>Microsoft Azure</a></li>
+              <li>Go to <a href="https://azure.microsoft.com/services/cognitive-services/translator/" target="_blank" rel="noopener noreferrer" style={styles.link}>Microsoft Azure</a></li>
               <li>Create a free Translator resource (2M characters/month free)</li>
               <li>Copy your API key from the Azure portal</li>
               <li>Paste it above and save</li>
@@ -160,7 +182,7 @@ function Settings({ onClose }) {
         <div style={styles.settingItem}>
           <label style={styles.label}>
             Words per page
-            <select style={styles.select} defaultValue="6">
+            <select style={styles.select} defaultValue="6" onChange={handleWordsPerPageChange}>
               <option value="3">3 words</option>
               <option value="5">5 words</option>
               <option value="6">6 words (recommended)</option>
@@ -172,7 +194,7 @@ function Settings({ onClose }) {
         <div style={styles.settingItem}>
           <label style={styles.label}>
             Difficulty level
-            <select style={styles.select} defaultValue="intermediate">
+            <select style={styles.select} defaultValue="intermediate" onChange={handleDifficultyChange}>
               <option value="beginner">Beginner</option>
               <option value="intermediate">Intermediate</option>
               <option value="advanced">Advanced</option>
@@ -182,9 +204,9 @@ function Settings({ onClose }) {
       </div>
     </div>
   );
-}
+};
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   container: {
     position: 'absolute',
     top: 0,

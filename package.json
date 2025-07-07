@@ -5,16 +5,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch --mode development",
-    "build": "vite build",
+    "dev": "NODE_ENV=development vite build --watch --mode development",
+    "build": "NODE_ENV=production vite build --mode production",
+    "build:dev": "NODE_ENV=development vite build --mode development",
     "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "lint": "tsc --noEmit",
     "pre-publish": "node scripts/pre-publish.js",
     "package": "npm run build && cd dist && zip -r ../fluent.zip . && cd ..",
-    "check": "npm run build && npm run pre-publish"
+    "package:dev": "npm run build:dev && cd dist && zip -r ../fluent-dev.zip . && cd ..",
+    "check": "npm run type-check && npm run build && npm run pre-publish",
+    "clean": "rm -rf dist fluent.zip fluent-dev.zip"
   },
   "devDependencies": {
+    "@types/chrome": "^0.0.329",
+    "@types/node": "^24.0.10",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.12"
+    "typescript": "^5.8.3",
+    "vite": "^5.0.12",
+    "wrangler": "^4.23.0"
   },
   "dependencies": {
     "react": "^18.2.0",

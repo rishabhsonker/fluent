@@ -1,18 +1,31 @@
-// PageControl.js - Floating in-page control widget
+// PageControl.ts - Floating in-page control widget
 'use strict';
 
+import type { UserSettings, LanguageCode, MessageRequest, MessageResponse } from '../types';
+
+interface PageControlSettings extends Partial<UserSettings> {
+  targetLanguage: LanguageCode;
+}
+
+interface LanguageButton {
+  lang: LanguageCode;
+  flag: string;
+  name: string;
+}
+
 export class PageControl {
-  constructor(settings = {}) {
+  private settings: PageControlSettings;
+  private isExpanded: boolean = false;
+  private isPaused: boolean = false;
+  private element: HTMLDivElement | null = null;
+  private menuElement: HTMLDivElement | null = null;
+
+  constructor(settings: PageControlSettings) {
     this.settings = settings;
-    this.isExpanded = false;
-    this.isPaused = false;
-    this.element = null;
-    this.menuElement = null;
-    
     this.init();
   }
 
-  init() {
+  private init(): void {
     // Create main button
     this.element = document.createElement('div');
     this.element.className = 'fluent-control';
@@ -38,8 +51,8 @@ export class PageControl {
     this.checkPauseState();
   }
 
-  getLanguageFlag() {
-    const flags = {
+  private getLanguageFlag(): string {
+    const flags: Record<LanguageCode, string> = {
       spanish: '🇪🇸',
       french: '🇫🇷', 
       german: '🇩🇪'
@@ -47,7 +60,7 @@ export class PageControl {
     return flags[this.settings.targetLanguage] || '🌐';
   }
 
-  renderMenu() {
+  private renderMenu(): string {
     return `
       <div class="fluent-control-menu-section">
         <div class="fluent-control-menu-label">Language</div>
@@ -95,64 +108,80 @@ export class PageControl {
     `;
   }
 
-  bindEvents() {
-    // Toggle menu
-    const button = this.element.querySelector('.fluent-control-button');
-    button.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.toggleMenu();
-    });
+  private bindEvents(): void {
+    if (!this.element || !this.menuElement) return;
 
-    // Language selection
-    this.menuElement.addEventListener('click', (e) => {
-      const langBtn = e.target.closest('.fluent-control-lang-btn');
+    // Toggle menu
+    const button = this.element.querySelector('.fluent-control-button') as HTMLButtonElement;
+    if (button) {
+      button.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        this.toggleMenu();
+      });
+    }
+
+    // Language selection and menu actions
+    this.menuElement.addEventListener('click', (e: Event) => {
+      const target = e.target as HTMLElement;
+      const langBtn = target.closest('.fluent-control-lang-btn') as HTMLButtonElement;
+      
       if (langBtn) {
-        const lang = langBtn.dataset.lang;
-        this.changeLanguage(lang);
-        return;
+        const lang = langBtn.dataset.lang as LanguageCode;
+        if (lang) {
+          this.changeLanguage(lang);
+          return;
+        }
       }
 
-      const menuItem = e.target.closest('.fluent-control-menu-item');
+      const menuItem = target.closest('.fluent-control-menu-item') as HTMLElement;
       if (menuItem) {
         const action = menuItem.dataset.action;
-        this.handleAction(action);
+        if (action) {
+          this.handleAction(action);
+        }
       }
     });
 
     // Close menu on outside click
-    document.addEventListener('click', (e) => {
-      if (!this.element.contains(e.target)) {
+    document.addEventListener('click', (e: Event) => {
+      if (this.element && !this.element.contains(e.target as Node)) {
         this.closeMenu();
       }
     });
 
     // Escape key
-    document.addEventListener('keydown', (e) => {
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Escape' && this.isExpanded) {
         this.closeMenu();
       }
     });
   }
 
-  toggleMenu() {
+  private toggleMenu(): void {
     this.isExpanded = !this.isExpanded;
-    if (this.isExpanded) {
-      this.menuElement.classList.add('visible');
-      // Update language selection
-      this.updateLanguageSelection();
-    } else {
+    if (this.menuElement) {
+      if (this.isExpanded) {
+        this.menuElement.classList.add('visible');
+        // Update language selection
+        this.updateLanguageSelection();
+      } else {
+        this.menuElement.classList.remove('visible');
+      }
+    }
+  }
+
+  private closeMenu(): void {
+    this.isExpanded = false;
+    if (this.menuElement) {
       this.menuElement.classList.remove('visible');
     }
   }
 
-  closeMenu() {
-    this.isExpanded = false;
-    this.menuElement.classList.remove('visible');
-  }
+  private updateLanguageSelection(): void {
+    if (!this.menuElement) return;
 
-  updateLanguageSelection() {
     // Remove all active states
-    this.menuElement.querySelectorAll('.fluent-control-lang-btn').forEach(btn => {
+    this.menuElement.querySelectorAll('.fluent-control-lang-btn').forEach((btn: Element) => {
       btn.classList.remove('active');
     });
     
@@ -165,20 +194,25 @@ export class PageControl {
     }
   }
 
-  async changeLanguage(language) {
+  private async changeLanguage(language: LanguageCode): Promise<void> {
     try {
       // Update local state
       this.settings.targetLanguage = language;
       
       // Update flag
-      this.element.querySelector('.fluent-control-flag').textContent = 
-        this.getLanguageFlag();
+      if (this.element) {
+        const flagElement = this.element.querySelector('.fluent-control-flag');
+        if (flagElement) {
+          flagElement.textContent = this.getLanguageFlag();
+        }
+      }
       
       // Send to background
-      await chrome.runtime.sendMessage({
+      const message: MessageRequest = {
         type: 'UPDATE_SETTINGS',
         settings: { targetLanguage: language }
-      });
+      };
+      await chrome.runtime.sendMessage(message);
       
       // Close menu and reload page
       this.closeMenu();
@@ -188,7 +222,7 @@ export class PageControl {
     }
   }
 
-  async handleAction(action) {
+  private async handleAction(action: string): Promise<void> {
     try {
       switch (action) {
         case 'pause-everywhere':
@@ -205,7 +239,8 @@ export class PageControl {
           
         case 'settings':
           // Open extension popup
-          chrome.runtime.sendMessage({ type: 'OPEN_POPUP' });
+          const message: MessageRequest = { type: 'OPEN_POPUP' };
+          chrome.runtime.sendMessage(message);
           break;
       }
       
@@ -215,13 +250,14 @@ export class PageControl {
     }
   }
 
-  async pauseEverywhere() {
+  private async pauseEverywhere(): Promise<void> {
     const pauseUntil = Date.now() + (6 * 60 * 60 * 1000); // 6 hours
     
-    await chrome.runtime.sendMessage({
+    const message: MessageRequest = {
       type: 'UPDATE_SETTINGS',
       settings: { pausedUntil: pauseUntil }
-    });
+    };
+    await chrome.runtime.sendMessage(message);
     
     this.showPausedState();
     
@@ -231,40 +267,44 @@ export class PageControl {
     }, 6 * 60 * 60 * 1000);
   }
 
-  async pauseSite() {
+  private async pauseSite(): Promise<void> {
     const hostname = window.location.hostname;
     const pauseUntil = Date.now() + (6 * 60 * 60 * 1000); // 6 hours
     
-    await chrome.runtime.sendMessage({
+    const message: MessageRequest = {
       type: 'UPDATE_SITE_SETTINGS',
       hostname: hostname,
       settings: { pausedUntil: pauseUntil }
-    });
+    };
+    await chrome.runtime.sendMessage(message);
     
     this.showPausedState();
   }
 
-  async disableSite() {
+  private async disableSite(): Promise<void> {
     const hostname = window.location.hostname;
     
-    await chrome.runtime.sendMessage({
+    const message: MessageRequest = {
       type: 'UPDATE_SITE_SETTINGS',
       hostname: hostname,
       settings: { enabled: false }
-    });
+    };
+    await chrome.runtime.sendMessage(message);
     
     // Reload to apply changes
     window.location.reload();
   }
 
-  async checkPauseState() {
+  private async checkPauseState(): Promise<void> {
     try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'GET_SETTINGS'
-      });
+      const message: MessageRequest = { type: 'GET_SETTINGS' };
+      const response = await chrome.runtime.sendMessage(message) as MessageResponse & {
+        settings?: UserSettings;
+        siteEnabled?: boolean;
+      };
       
       const now = Date.now();
-      const globallyPaused = response.settings.pausedUntil && 
+      const globallyPaused = response.settings?.pausedUntil && 
                            response.settings.pausedUntil > now;
       
       if (!response.siteEnabled || globallyPaused) {
@@ -277,26 +317,34 @@ export class PageControl {
     }
   }
 
-  showPausedState() {
+  private showPausedState(): void {
     this.isPaused = true;
-    this.element.classList.add('fluent-paused');
+    if (this.element) {
+      this.element.classList.add('fluent-paused');
+    }
     document.body.classList.add('fluent-paused');
   }
 
-  showActiveState() {
+  private showActiveState(): void {
     this.isPaused = false;
-    this.element.classList.remove('fluent-paused');
+    if (this.element) {
+      this.element.classList.remove('fluent-paused');
+    }
     document.body.classList.remove('fluent-paused');
   }
 
-  updatePosition() {
+  public updatePosition(): void {
+    if (!this.element) return;
+
     // Smart positioning to avoid overlapping content
-    const button = this.element.querySelector('.fluent-control-button');
+    const button = this.element.querySelector('.fluent-control-button') as HTMLButtonElement;
+    if (!button) return;
+
     const rect = button.getBoundingClientRect();
     
     // Check if button overlaps any fixed/sticky elements
     const elements = document.elementsFromPoint(rect.right - 28, rect.bottom - 28);
-    const hasOverlap = elements.some(el => {
+    const hasOverlap = elements.some((el: Element) => {
       const style = window.getComputedStyle(el);
       return style.position === 'fixed' || style.position === 'sticky';
     });
@@ -307,7 +355,7 @@ export class PageControl {
     }
   }
 
-  destroy() {
+  public destroy(): void {
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
@@ -317,6 +365,6 @@ export class PageControl {
 }
 
 // Factory function
-export function createPageControl(settings) {
+export function createPageControl(settings: PageControlSettings): PageControl {
   return new PageControl(settings);
 }

@@ -1,12 +1,24 @@
 import React, { useState, useEffect } from 'react';
 
-function BlacklistManager() {
-  const [customSites, setCustomSites] = useState([]);
-  const [categories, setCategories] = useState({});
-  const [newSite, setNewSite] = useState('');
-  const [showCategories, setShowCategories] = useState(false);
+interface CategoryConfig {
+  name: string;
+  description: string;
+}
 
-  const CATEGORIES = {
+interface BlacklistSettings {
+  categories: Record<string, boolean>;
+  customSites: string[];
+}
+
+type CategoryKey = 'FINANCIAL' | 'GOVERNMENT' | 'HEALTHCARE' | 'AUTHENTICATION' | 'SHOPPING_CHECKOUT' | 'WORK_TOOLS';
+
+const BlacklistManager: React.FC = () => {
+  const [customSites, setCustomSites] = useState<string[]>([]);
+  const [categories, setCategories] = useState<Record<string, boolean>>({});
+  const [newSite, setNewSite] = useState<string>('');
+  const [showCategories, setShowCategories] = useState<boolean>(false);
+
+  const CATEGORIES: Record<CategoryKey, CategoryConfig> = {
     FINANCIAL: {
       name: 'Financial & Banking',
       description: 'Banks, payment processors, and financial services'
@@ -37,15 +49,15 @@ function BlacklistManager() {
     loadBlacklist();
   }, []);
 
-  async function loadBlacklist() {
+  async function loadBlacklist(): Promise<void> {
     try {
       const result = await chrome.storage.sync.get('blacklist_settings');
-      const settings = result.blacklist_settings || { categories: {}, customSites: [] };
+      const settings = (result.blacklist_settings || { categories: {}, customSites: [] }) as BlacklistSettings;
       
       setCustomSites(settings.customSites || []);
       
       // Set default category states
-      const categoryStates = {};
+      const categoryStates: Record<string, boolean> = {};
       for (const key of Object.keys(CATEGORIES)) {
         categoryStates[key] = settings.categories[key] !== false;
       }
@@ -55,7 +67,7 @@ function BlacklistManager() {
     }
   }
 
-  async function saveBlacklist() {
+  async function saveBlacklist(): Promise<void> {
     try {
       await chrome.storage.sync.set({
         blacklist_settings: {
@@ -68,7 +80,7 @@ function BlacklistManager() {
     }
   }
 
-  async function addSite() {
+  async function addSite(): Promise<void> {
     if (!newSite.trim()) return;
     
     const site = newSite.trim();
@@ -87,7 +99,7 @@ function BlacklistManager() {
     }
   }
 
-  async function removeSite(site) {
+  async function removeSite(site: string): Promise<void> {
     const updated = customSites.filter(s => s !== site);
     setCustomSites(updated);
     
@@ -100,7 +112,7 @@ function BlacklistManager() {
     });
   }
 
-  async function toggleCategory(key) {
+  async function toggleCategory(key: string): Promise<void> {
     const updated = { ...categories, [key]: !categories[key] };
     setCategories(updated);
     
@@ -113,7 +125,7 @@ function BlacklistManager() {
     });
   }
 
-  async function addCurrentSite() {
+  async function addCurrentSite(): Promise<void> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.url) {
       try {
@@ -131,13 +143,21 @@ function BlacklistManager() {
           });
           
           // Reload the tab
-          chrome.tabs.reload(tab.id);
+          if (tab.id) {
+            chrome.tabs.reload(tab.id);
+          }
         }
       } catch (error) {
         console.error('Error adding current site:', error);
       }
     }
   }
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') {
+      addSite();
+    }
+  };
 
   return (
     <div style={styles.container}>
@@ -191,7 +211,7 @@ function BlacklistManager() {
             type="text"
             value={newSite}
             onChange={(e) => setNewSite(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && addSite()}
+            onKeyPress={handleKeyPress}
             placeholder="example.com or /checkout"
             style={styles.input}
           />
@@ -223,9 +243,9 @@ function BlacklistManager() {
       </div>
     </div>
   );
-}
+};
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   container: {
     padding: '20px',
     maxHeight: '500px',

@@ -10,17 +10,70 @@
   },
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "scripting"
+  ],
+  "optional_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "*://*.wikipedia.org/*",
+    "*://*.reddit.com/*",
+    "*://*.medium.com/*",
+    "*://*.nytimes.com/*",
+    "*://*.bbc.com/*",
+    "*://*.bbc.co.uk/*",
+    "*://*.cnn.com/*",
+    "*://*.theguardian.com/*",
+    "*://*.washingtonpost.com/*",
+    "*://*.economist.com/*",
+    "*://*.forbes.com/*",
+    "*://*.wired.com/*",
+    "*://*.arstechnica.com/*",
+    "*://*.techcrunch.com/*",
+    "*://*.stackoverflow.com/*",
+    "*://*.github.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "*://*.wikipedia.org/*",
+        "*://*.reddit.com/*",
+        "*://*.medium.com/*",
+        "*://*.nytimes.com/*",
+        "*://*.bbc.com/*",
+        "*://*.bbc.co.uk/*",
+        "*://*.cnn.com/*",
+        "*://*.theguardian.com/*",
+        "*://*.washingtonpost.com/*",
+        "*://*.economist.com/*",
+        "*://*.forbes.com/*",
+        "*://*.wired.com/*",
+        "*://*.arstechnica.com/*",
+        "*://*.techcrunch.com/*",
+        "*://*.stackoverflow.com/*",
+        "*://*.github.com/*"
+      ],
+      "exclude_matches": [
+        "*://mail.google.com/*",
+        "*://*.mail.yahoo.com/*",
+        "*://outlook.live.com/*",
+        "*://*.bank*",
+        "*://*.banking*",
+        "*://*.paypal.com/*",
+        "*://*.venmo.com/*",
+        "*://*.stripe.com/*",
+        "*://*.gov/*",
+        "*://*.gov.*/*",
+        "*://*.mil/*",
+        "*://*.healthcare*",
+        "*://*.health*",
+        "*://*.medical*"
+      ],
       "js": ["content.js"],
       "css": ["content.css"],
       "run_at": "document_idle",
@@ -39,9 +92,14 @@
     {
       "resources": ["icons/*", "content/styles.css"],
       "matches": ["<all_urls>"]
+    },
+    {
+      "resources": ["lib/spacedRepetition.ts"],
+      "matches": ["<all_urls>"],
+      "use_dynamic_url": true
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.cognitive.microsofttranslator.com https://fluent-translator.workers.dev; font-src 'self'; frame-src 'none'; media-src 'none'; worker-src 'self'"
   }
 }

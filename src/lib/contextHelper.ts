@@ -2,9 +2,50 @@
 // Uses Claude Haiku for cost-efficient context generation
 'use strict';
 
-import { storage } from './storage.js';
+import { storage } from './storage';
+import { LanguageCode, ContextExplanation, MessageRequest, MessageResponse } from '../types';
+
+interface CommonExplanations {
+  [key: string]: ContextExplanation;
+}
+
+interface ContextUsage {
+  date: string;
+  count: number;
+}
+
+interface ContextCache {
+  explanations: { [key: string]: ContextExplanation };
+  updated: number;
+}
+
+interface ContextStats {
+  cacheSize: number;
+  dailyUsage: number;
+  dailyLimit: number;
+}
+
+interface LimitedExplanation extends ContextExplanation {
+  limited?: boolean;
+  error?: boolean;
+}
+
+interface GenerateContextMessage extends MessageRequest {
+  type: 'GENERATE_CONTEXT';
+  prompt: string;
+}
+
+interface GenerateContextResponse extends MessageResponse {
+  text?: string;
+}
 
 export class ContextHelper {
+  private cache: Map<string, ContextExplanation>;
+  private dailyCount: number;
+  private readonly dailyLimit: number;
+  private lastResetDate: string;
+  private readonly commonExplanations: CommonExplanations;
+
   constructor() {
     this.cache = new Map();
     this.dailyCount = 0;
@@ -38,9 +79,9 @@ export class ContextHelper {
     this.initializeCache();
   }
   
-  async initializeCache() {
+  private async initializeCache(): Promise<void> {
     // Load cached explanations
-    const cached = await storage.get('contextExplanations');
+    const cached = await storage.get('contextExplanations') as ContextCache | null;
     if (cached && cached.explanations) {
       for (const [key, value] of Object.entries(cached.explanations)) {
         this.cache.set(key, value);
@@ -48,7 +89,7 @@ export class ContextHelper {
     }
     
     // Load daily count
-    const usage = await storage.get('contextUsage');
+    const usage = await storage.get('contextUsage') as ContextUsage | null;
     if (usage) {
       if (usage.date === this.lastResetDate) {
         this.dailyCount = usage.count || 0;
@@ -60,7 +101,12 @@ export class ContextHelper {
     }
   }
   
-  async getExplanation(word, translation, language, sentence) {
+  async getExplanation(
+    word: string, 
+    translation: string, 
+    language: LanguageCode | string, 
+    sentence: string
+  ): Promise<LimitedExplanation> {
     // Check daily limit
     if (this.dailyCount >= this.dailyLimit) {
       const hasApiKey = await this.checkForApiKey();
@@ -82,7 +128,7 @@ export class ContextHelper {
     
     // Check cache
     if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey);
+      return this.cache.get(cacheKey) as ContextExplanation;
     }
     
     // Generate new explanation
@@ -107,34 +153,54 @@ export class ContextHelper {
     }
   }
   
-  async generateExplanation(word, translation, language, sentence) {
+  private async generateExplanation(
+    word: string, 
+    translation: string, 
+    language: LanguageCode | string, 
+    sentence: string
+  ): Promise<ContextExplanation> {
     // For MVP, use predefined explanations or call Claude API
-    const response = await chrome.runtime.sendMessage({
+    const message: GenerateContextMessage = {
       type: 'GENERATE_CONTEXT',
       prompt: this.buildPrompt(word, translation, language, sentence)
-    });
+    };
+
+    const response = await chrome.runtime.sendMessage<
+      GenerateContextMessage,
+      GenerateContextResponse
+    >(message);
     
     if (response.error) {
       throw new Error(response.error);
     }
     
-    return this.parseExplanation(response.text);
+    return this.parseExplanation(response.text || '');
   }
   
-  buildPrompt(word, translation, language, sentence) {
-    const langName = {
+  private buildPrompt(
+    word: string, 
+    translation: string, 
+    language: LanguageCode | string, 
+    sentence: string
+  ): string {
+    const langName: Record<string, string> = {
       es: 'Spanish',
-      fr: 'French', 
-      de: 'German'
-    }[language] || 'target language';
+      spanish: 'Spanish',
+      fr: 'French',
+      french: 'French',
+      de: 'German',
+      german: 'German'
+    };
+    
+    const targetLang = langName[language] || 'target language';
     
     return `
-Explain why "${word}" translates to "${translation}" in ${langName}.
+Explain why "${word}" translates to "${translation}" in ${targetLang}.
 Context: "${sentence}"
 
 Include:
 1. Why this specific translation (not alternatives)
-2. Common usage example in ${langName}
+2. Common usage example in ${targetLang}
 3. Memory tip or cultural note if relevant
 
 Keep it under 3 sentences, conversational and helpful.
@@ -142,38 +208,39 @@ Format as JSON: { "explanation": "...", "example": "...", "tip": "..." }
     `.trim();
   }
   
-  parseExplanation(text) {
+  private parseExplanation(text: string): ContextExplanation {
     try {
       // Attempt to parse as JSON
-      const parsed = JSON.parse(text);
+      const parsed = JSON.parse(text) as Partial<ContextExplanation>;
       return {
         explanation: parsed.explanation || text,
         example: parsed.example,
-        tip: parsed.tip
+        tip: parsed.tip,
+        alternatives: parsed.alternatives
       };
     } catch {
       // Fallback to plain text
       return {
         explanation: text,
-        example: null,
-        tip: null
+        example: undefined,
+        tip: undefined
       };
     }
   }
   
-  async checkForApiKey() {
+  private async checkForApiKey(): Promise<boolean> {
     const result = await chrome.storage.sync.get('userApiKey');
     return !!result.userApiKey;
   }
   
-  async updateUsage() {
+  private async updateUsage(): Promise<void> {
     await storage.set('contextUsage', {
       date: this.lastResetDate,
       count: this.dailyCount
     });
   }
   
-  async saveCache() {
+  private async saveCache(): Promise<void> {
     // Limit cache size
     if (this.cache.size > 1000) {
       // Remove oldest entries
@@ -190,7 +257,7 @@ Format as JSON: { "explanation": "...", "example": "...", "tip": "..." }
   }
   
   // Get statistics
-  getStats() {
+  getStats(): ContextStats {
     return {
       cacheSize: this.cache.size,
       dailyUsage: this.dailyCount,
