@@ -34,7 +34,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       const usage = await chrome.runtime.sendMessage({ type: 'GET_DAILY_USAGE' }) as DailyUsageResponse;
       setDailyUsage(usage.count || 0);
     } catch (error) {
-      console.error('Error loading API settings:', error);
+      // Error loading API settings - use defaults
     }
   }
 
@@ -48,7 +48,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       setSavedMessage('API key saved successfully!');
       setTimeout(() => setSavedMessage(''), 3000);
     } catch (error) {
-      console.error('Error saving API key:', error);
+      // Error saving API key - will be handled by UI
       setSavedMessage('Error saving API key');
     }
     setSaving(false);
@@ -66,7 +66,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         setSavedMessage('API key removed');
         setTimeout(() => setSavedMessage(''), 3000);
       } catch (error) {
-        console.error('Error removing API key:', error);
+        // Error removing API key - will be handled by UI
       }
       setSaving(false);
     }
@@ -74,12 +74,12 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
 
   const handleWordsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     // TODO: Implement words per page setting
-    console.log('Words per page:', e.target.value);
+    // Words per page changed
   };
 
   const handleDifficultyChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     // TODO: Implement difficulty setting
-    console.log('Difficulty:', e.target.value);
+    // Difficulty changed
   };
 
   return (

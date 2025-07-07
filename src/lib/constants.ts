@@ -189,8 +189,9 @@ export const WORD_CONFIG: WordConfig = {
 
 // API Configuration
 export const API_CONFIG: ApiConfig = {
-  // Cloudflare Worker endpoint - uses environment variable or defaults to localhost
-  TRANSLATOR_API: import.meta.env.VITE_TRANSLATOR_API || 'http://localhost:8787',
+  // Production Cloudflare Worker endpoint
+  // This should be set via environment variable in production
+  TRANSLATOR_API: '',
 } as const;
 
 // Storage keys

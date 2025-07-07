@@ -37,7 +37,7 @@ export class WordReplacer {
   private wordCounts: Map<string, number>;
   private replacedWords: Set<string>;
   private replacementElements: WeakMap<Node, HTMLElement>;
-  private readonly MAX_WORD_CACHE = 1000; // Prevent memory leak
+  private readonly MAX_WORD_CACHE = 500; // Reduced for production memory constraints
   public storage: any; // Will be properly typed when storage is converted
   public currentLanguage: LanguageCode | null;
 
@@ -54,37 +54,45 @@ export class WordReplacer {
   async analyzeText(textNodes: Text[]): Promise<string[]> {
     const startTime = performance.now();
     
-    // First pass: collect word frequencies
-    for (const node of textNodes) {
-      // Security check
-      if (!isNodeSafe(node)) continue;
-      
-      const text = node.textContent || '';
-      const words = this.extractWords(text);
-      
-      for (const word of words) {
-        if (this.isValidWord(word)) {
-          const sanitized = sanitizeWord(word);
-          if (!sanitized) continue;
-          
-          const normalized = sanitized.toLowerCase();
-          
-          // Prevent memory leak
-          if (this.wordCounts.size >= this.MAX_WORD_CACHE) {
-            const firstKey = this.wordCounts.keys().next().value;
-            this.wordCounts.delete(firstKey);
+    // Import performance utilities
+    const { processInChunks } = await import('../lib/performance');
+    
+    // Process nodes in chunks to avoid blocking
+    await processInChunks(
+      textNodes,
+      (node) => {
+        // Security check
+        if (!isNodeSafe(node)) return;
+        
+        const text = node.textContent || '';
+        const words = this.extractWords(text);
+        
+        for (const word of words) {
+          if (this.isValidWord(word)) {
+            const sanitized = sanitizeWord(word);
+            if (!sanitized) continue;
+            
+            const normalized = sanitized.toLowerCase();
+            
+            // Prevent memory leak - remove oldest entries in batch
+            if (this.wordCounts.size >= this.MAX_WORD_CACHE) {
+              const keysToRemove = Math.floor(this.MAX_WORD_CACHE * 0.2); // Remove 20%
+              const iterator = this.wordCounts.keys();
+              for (let i = 0; i < keysToRemove; i++) {
+                const key = iterator.next().value;
+                if (key) this.wordCounts.delete(key);
+              }
+            }
+            
+            this.wordCounts.set(normalized, (this.wordCounts.get(normalized) || 0) + 1);
           }
-          
-          this.wordCounts.set(normalized, (this.wordCounts.get(normalized) || 0) + 1);
         }
+      },
+      {
+        chunkSize: 20,
+        maxTime: this.config.PERFORMANCE_GUARD_MS / 2
       }
-      
-      // Performance check
-      if (performance.now() - startTime > this.config.PERFORMANCE_GUARD_MS) {
-        logger.warn('Performance budget exceeded during text analysis');
-        break;
-      }
-    }
+    );
     
     // Select best words for replacement
     return await this.selectWordsForReplacement();
@@ -183,25 +191,41 @@ export class WordReplacer {
         processedPositions: new Set()
       };
       
+      // Import performance utilities
+      const { processInChunks } = await import('../lib/performance');
+      
+      // Process nodes in chunks
+      const nodesToProcess: { node: Text; replacements: ReplacementData[] }[] = [];
+      
+      // First pass: collect replacements
       for (const node of textNodes) {
-        // Check limits
         if (this.shouldStopProcessing(context)) break;
         
-        // Process single node with error boundary
         const nodeReplacements = boundaries.replacer.wrapSync(
           () => this.processNode(node, wordsToReplace, translations, context),
           []
         );
         
-        // Apply replacements if any
         if (nodeReplacements && nodeReplacements.length > 0) {
-          await boundaries.replacer.wrap(
-            async () => await this.applyReplacements(node, nodeReplacements),
-            null
-          );
-          context.replacementCount += nodeReplacements?.length || 0;
+          nodesToProcess.push({ node, replacements: nodeReplacements });
         }
       }
+      
+      // Second pass: apply replacements in chunks
+      await processInChunks(
+        nodesToProcess,
+        async ({ node, replacements }) => {
+          await boundaries.replacer.wrap(
+            async () => await this.applyReplacements(node, replacements),
+            null
+          );
+          context.replacementCount += replacements.length;
+        },
+        {
+          chunkSize: 5,
+          maxTime: 30
+        }
+      );
       
       return context.replacementCount;
     }, 0); // Return 0 replacements on error
@@ -382,10 +406,24 @@ export class WordReplacer {
     return (wordCountSize + replacedSize) / 1024 / 1024; // MB
   }
 
-  // Cleanup
+  // Comprehensive cleanup
   cleanup(): void {
+    // Clear all collections
     this.wordCounts.clear();
     this.replacedWords.clear();
     this.replacementElements = new WeakMap();
+    
+    // Remove references
+    this.storage = null;
+    this.currentLanguage = null;
+    
+    // Force garbage collection hint
+    if ((globalThis as any).gc) {
+      try {
+        (globalThis as any).gc();
+      } catch (e) {
+        // Ignore - gc might not be available
+      }
+    }
   }
 }

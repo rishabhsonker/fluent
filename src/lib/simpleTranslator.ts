@@ -217,10 +217,7 @@ export class SimpleTranslator {
     const identifier = apiKey ? `byok:${apiKey.substring(0, 8)}` : 'free';
     
     return await rateLimiter.withRateLimit('translation', identifier, async () => {
-      // Check for mock mode
-      if (API_CONFIG.TRANSLATOR_API.includes('localhost')) {
-        return this.getMockTranslations(words, targetLanguage);
-      }
+      // No mock mode in production
       
       // Get authentication headers
       const authHeaders = await ExtensionAuthenticator.generateAuthHeaders();

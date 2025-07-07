@@ -2,10 +2,11 @@
 
 /* Replaced word styling */
 .fluent-word {
-  color: #3b82f6 !important; /* Blue color for replaced words */
+  color: #9F2B68 !important; /* Deep magenta for replaced words */
   text-decoration: underline !important;
+  text-decoration-color: #BF40BF !important; /* Bright purple underline */
   text-decoration-style: dotted !important;
-  text-decoration-thickness: 1px !important;
+  text-decoration-thickness: 1.5px !important;
   text-underline-offset: 2px !important;
   cursor: help !important;
   transition: all 0.2s ease;
@@ -21,13 +22,14 @@
 
 /* Hover effect */
 .fluent-word:hover {
-  color: #2563eb !important;
+  color: #7D1F52 !important; /* Darker magenta on hover */
   text-decoration-style: solid !important;
+  text-decoration-thickness: 2px !important;
 }
 
 /* Focus state for accessibility */
 .fluent-word:focus {
-  outline: 2px solid #3b82f6 !important;
+  outline: 2px solid #BF40BF !important; /* Purple outline for keyboard focus */
   outline-offset: 2px !important;
   border-radius: 2px;
 }
@@ -50,6 +52,9 @@
   transform: translateY(4px);
   transition: opacity 0.2s ease, transform 0.2s ease;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  /* Use CSS custom properties for positioning */
+  left: var(--tooltip-left, 0);
+  top: var(--tooltip-top, 0);
 }
 
 /* Tooltip visible state */
@@ -397,6 +402,54 @@
   .fluent-control-menu-item:hover {
     background: #4b5563;
   }
+}
+
+/* Utility classes for state management */
+.fluent-hidden {
+  display: none !important;
+}
+
+.fluent-visible {
+  display: block !important;
+}
+
+.fluent-opacity-low {
+  opacity: 0.3 !important;
+}
+
+.fluent-opacity-full {
+  opacity: 1 !important;
+}
+
+/* Progress bar dynamic widths */
+.fluent-progress-0 { width: 0% !important; }
+.fluent-progress-10 { width: 10% !important; }
+.fluent-progress-20 { width: 20% !important; }
+.fluent-progress-30 { width: 30% !important; }
+.fluent-progress-40 { width: 40% !important; }
+.fluent-progress-50 { width: 50% !important; }
+.fluent-progress-60 { width: 60% !important; }
+.fluent-progress-70 { width: 70% !important; }
+.fluent-progress-80 { width: 80% !important; }
+.fluent-progress-90 { width: 90% !important; }
+.fluent-progress-100 { width: 100% !important; }
+
+/* Progress bar colors */
+.fluent-progress-green {
+  background-color: #10b981 !important;
+}
+
+.fluent-progress-yellow {
+  background-color: #f59e0b !important;
+}
+
+.fluent-progress-blue {
+  background-color: #3b82f6 !important;
+}
+
+/* Control widget position adjustment */
+.fluent-control-adjusted {
+  bottom: 100px !important;
 }
 
 /* Print styles */

@@ -258,20 +258,15 @@ async function getTranslations(words: string[], language: string): Promise<any> 
     }
   }
   
-  // For now, use mock translations
+  // Return empty translations if we have words to translate (API will be called from content script)
   if (wordsToTranslate.length > 0) {
-    // In production, this would call the translation API
-    const { MOCK_TRANSLATIONS } = await import('../lib/constants.js');
-    const mockData = MOCK_TRANSLATIONS[language as LanguageCode] || {};
-    
-    for (const word of wordsToTranslate) {
-      const translation = mockData[word.toLowerCase()] || word;
-      translations[word] = translation;
-      
-      // Cache the translation
-      const cacheKey = `${language}:${word.toLowerCase()}`;
-      state.translationCache.set(cacheKey, translation);
-    }
+    // In production, translations are fetched via the translation service
+    // This is just a cache lookup - actual translations happen elsewhere
+    return { 
+      translations, 
+      fromCache: false,
+      error: 'Translations should be fetched from translation service'
+    };
   }
   
   // Implement cache size limit

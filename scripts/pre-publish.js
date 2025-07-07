@@ -91,8 +91,9 @@ for (const file of jsFiles) {
     exposedEndpoints = true;
   }
   
-  // Check for API keys
-  if (content.match(/api[_-]?key/i) && content.includes('=') && content.includes('"')) {
+  // Check for API keys - look for actual hardcoded values, not just variable names
+  const apiKeyPattern = /api[_-]?key\s*[:=]\s*["'][\w-]{10,}["']/i;
+  if (apiKeyPattern.test(content)) {
     console.error(`❌ Potential API key found in ${file}`);
     exposedEndpoints = true;
   }
@@ -154,8 +155,9 @@ for (const file of jsFiles) {
     console.warn(`⚠️  innerHTML usage found in ${file} - ensure content is sanitized`);
   }
   
-  // Check for insecure protocols
-  if (content.includes('http://') && !content.includes('http://localhost')) {
+  // Check for insecure protocols (exclude localhost and schema definitions)
+  const httpPattern = /http:\/\/(?!localhost|127\.0\.0\.1|schemas?\.)/;
+  if (httpPattern.test(content)) {
     console.warn(`⚠️  Insecure HTTP protocol found in ${file}`);
   }
 }

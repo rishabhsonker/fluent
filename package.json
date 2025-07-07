@@ -5,9 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development vite build --watch --mode development",
-    "build": "NODE_ENV=production vite build --mode production",
-    "build:dev": "NODE_ENV=development vite build --mode development",
+    "dev": "vite build --watch --mode development",
+    "build": "vite build --mode production",
+    "build:prod": "vite build --mode production",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "lint": "tsc --noEmit",

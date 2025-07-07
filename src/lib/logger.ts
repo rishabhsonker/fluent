@@ -28,10 +28,8 @@ class Logger {
   private readonly maxHistorySize: number;
 
   constructor() {
-    // Check if we're in development mode
-    this.isDevelopment = (process as any)?.env?.NODE_ENV === 'development' || 
-                        (chrome as any)?.runtime?.getManifest?.()?.version_name?.includes('dev') ||
-                        false;
+    // Production build - always silent except for critical errors
+    this.isDevelopment = false;
     
     // Log levels
     this.levels = {
@@ -41,12 +39,12 @@ class Logger {
       DEBUG: 3
     };
     
-    // Current log level
-    this.currentLevel = this.isDevelopment ? this.levels.DEBUG : this.levels.ERROR;
+    // In production, only log errors to avoid any console output
+    this.currentLevel = this.levels.ERROR;
     
     // Log history for debugging (limited size)
     this.history = [];
-    this.maxHistorySize = 100;
+    this.maxHistorySize = 50; // Reduced for production
   }
 
   // Set log level
@@ -141,10 +139,18 @@ class Logger {
 // Export singleton instance
 export const logger = new Logger();
 
-// For production builds, ensure console.log is disabled
-if (typeof process !== 'undefined' && process.env.NODE_ENV === 'production') {
+// For production: Override console methods to prevent any accidental logging
+(() => {
   const noop = (): void => {};
+  // Keep error and warn for critical issues only
   console.log = noop;
   console.info = noop;
   console.debug = noop;
-}
+  console.trace = noop;
+  console.time = noop;
+  console.timeEnd = noop;
+  console.timeLog = noop;
+  console.group = noop;
+  console.groupEnd = noop;
+  console.groupCollapsed = noop;
+})();

@@ -64,7 +64,7 @@ export class Tooltip {
     this.element = document.createElement('div');
     this.element.className = 'fluent-tooltip';
     this.element.setAttribute('role', 'tooltip');
-    this.element.style.display = 'none';
+    this.element.classList.add('fluent-hidden');
     
     // Build DOM structure safely
     this.buildTooltipDOM();
@@ -143,7 +143,7 @@ export class Tooltip {
     // Context panel
     const contextPanel = document.createElement('div');
     contextPanel.className = 'fluent-tooltip-context-panel';
-    contextPanel.style.display = 'none';
+    contextPanel.classList.add('fluent-hidden');
     
     const contextContent = document.createElement('div');
     contextContent.className = 'fluent-tooltip-context-content';
@@ -202,12 +202,13 @@ export class Tooltip {
     
     this.eventHandlers.windowScroll = () => {
       if (this.isVisible && this.element) {
-        this.element.style.opacity = '0.3';
+        this.element.classList.add('fluent-opacity-low');
         if (this.scrollTimeout) clearTimeout(this.scrollTimeout);
         this.scrollTimeout = window.setTimeout(() => {
           if (this.isVisible && this.element) {
             this.updatePosition();
-            this.element.style.opacity = '1';
+            this.element.classList.remove('fluent-opacity-low');
+            this.element.classList.add('fluent-opacity-full');
           }
         }, 150);
       }
@@ -319,30 +320,34 @@ export class Tooltip {
           const progressContainer = this.element.querySelector('.fluent-tooltip-progress') as HTMLDivElement;
           
           if (progressFill && progressText) {
-            progressFill.style.width = `${wordData.mastery}%`;
+            // Use CSS classes for width
+            const widthClass = `fluent-progress-${Math.round(wordData.mastery / 10) * 10}`;
+            progressFill.className = 'fluent-tooltip-progress-fill ' + widthClass;
             
             // Set color based on mastery
             if (wordData.mastery >= 80) {
-              progressFill.style.backgroundColor = '#10b981'; // Green
+              progressFill.classList.add('fluent-progress-green');
               progressText.textContent = 'Mastered';
             } else if (wordData.mastery >= 50) {
-              progressFill.style.backgroundColor = '#f59e0b'; // Yellow
+              progressFill.classList.add('fluent-progress-yellow');
               progressText.textContent = 'Learning';
             } else {
-              progressFill.style.backgroundColor = '#3b82f6'; // Blue
+              progressFill.classList.add('fluent-progress-blue');
               progressText.textContent = 'New';
             }
           }
           
           // Show progress bar
           if (progressContainer) {
-            progressContainer.style.display = 'block';
+            progressContainer.classList.remove('fluent-hidden');
+            progressContainer.classList.add('fluent-visible');
           }
         } else {
           // Hide progress for new words
           const progressContainer = this.element.querySelector('.fluent-tooltip-progress') as HTMLDivElement;
           if (progressContainer) {
-            progressContainer.style.display = 'none';
+            progressContainer.classList.remove('fluent-visible');
+            progressContainer.classList.add('fluent-hidden');
           }
         }
       } catch (error) {
@@ -372,7 +377,7 @@ export class Tooltip {
   private show(): void {
     if (!this.element) return;
     
-    this.element.style.display = 'block';
+    this.element.classList.remove('fluent-hidden');
     // Force reflow
     void this.element.offsetHeight;
     this.element.classList.add('visible');
@@ -388,7 +393,7 @@ export class Tooltip {
     // Hide after transition
     setTimeout(() => {
       if (!this.isVisible && this.element) {
-        this.element.style.display = 'none';
+        this.element.classList.add('fluent-hidden');
         this.currentTarget = null;
       }
     }, 200);
@@ -438,8 +443,9 @@ export class Tooltip {
     }
 
     // Apply position
-    this.element.style.left = `${left}px`;
-    this.element.style.top = `${top}px`;
+    // Set position using CSS custom properties to avoid inline styles
+    this.element.style.setProperty('--tooltip-left', `${left}px`);
+    this.element.style.setProperty('--tooltip-top', `${top}px`);
   }
 
   private async playPronunciation(): Promise<void> {
@@ -500,9 +506,10 @@ export class Tooltip {
     
     if (!panel || !content || !btn) return;
 
-    if (panel.style.display === 'none') {
+    if (panel.classList.contains('fluent-hidden')) {
       // Show context
-      panel.style.display = 'block';
+      panel.classList.remove('fluent-hidden');
+      panel.classList.add('fluent-visible');
       btn.textContent = '💡 Loading...';
       
       // Track context interaction
@@ -563,7 +570,8 @@ export class Tooltip {
       this.updatePosition(); // Reposition tooltip
     } else {
       // Hide context
-      panel.style.display = 'none';
+      panel.classList.remove('fluent-visible');
+      panel.classList.add('fluent-hidden');
       btn.textContent = '💡 Why?';
       this.updatePosition();
     }

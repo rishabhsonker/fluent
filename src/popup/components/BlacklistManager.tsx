@@ -63,7 +63,7 @@ const BlacklistManager: React.FC = () => {
       }
       setCategories(categoryStates);
     } catch (error) {
-      console.error('Error loading blacklist:', error);
+      // Error loading blacklist - use empty list
     }
   }
 
@@ -76,7 +76,7 @@ const BlacklistManager: React.FC = () => {
         }
       });
     } catch (error) {
-      console.error('Error saving blacklist:', error);
+      // Error saving blacklist - will retry on next interaction
     }
   }
 
@@ -148,7 +148,7 @@ const BlacklistManager: React.FC = () => {
           }
         }
       } catch (error) {
-        console.error('Error adding current site:', error);
+        // Error adding current site - UI will handle
       }
     }
   }

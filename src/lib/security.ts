@@ -50,7 +50,7 @@ export class SecurityManager {
       trustedOrigins: new Set([
         chrome.runtime.getURL(''),
         'https://api.cognitive.microsofttranslator.com',
-        'https://fluent-translator.workers.dev'
+        // Worker URL should be added dynamically
       ]),
       blockedProtocols: ['javascript:', 'data:', 'vbscript:', 'file:'],
       suspiciousPatterns: [

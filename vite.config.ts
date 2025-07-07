@@ -75,19 +75,29 @@ export default defineConfig({
       }
     },
     target: 'esnext',
-    minify: process.env.NODE_ENV === 'production' ? 'terser' : false,
-    sourcemap: process.env.NODE_ENV === 'development',
+    minify: 'terser', // Always minify for production
+    sourcemap: false, // No sourcemaps in production
     terserOptions: {
       format: {
-        comments: false
+        comments: false // Remove all comments
       },
       compress: {
-        drop_console: process.env.NODE_ENV === 'production',
-        drop_debugger: true,
-        pure_funcs: process.env.NODE_ENV === 'production' ? ['console.log', 'console.debug'] : []
+        drop_console: true, // Remove all console statements
+        drop_debugger: true, // Remove debugger statements
+        pure_funcs: ['console.log', 'console.debug', 'console.info', 'console.warn'],
+        passes: 2, // Run compression twice for better optimization
+        ecma: 2020,
+        module: true,
+        toplevel: true,
+        unsafe_arrows: true,
+        warnings: false
       },
       mangle: {
-        safari10: true
+        safari10: true,
+        toplevel: true,
+        properties: {
+          regex: /^_/ // Mangle properties starting with underscore
+        }
       }
     }
   },

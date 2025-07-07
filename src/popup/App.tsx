@@ -47,7 +47,7 @@ function App(): JSX.Element {
       setCurrentSite(response.hostname || 'This site');
       setLoading(false);
     } catch (error) {
-      console.error('Error loading settings:', error);
+      // Error loading settings - fail silently in production
       setLoading(false);
     }
   }
@@ -61,7 +61,7 @@ function App(): JSX.Element {
         setLearningStats(response.stats);
       }
     } catch (error) {
-      console.error('Error loading learning stats:', error);
+      // Error loading stats - fail silently in production
     }
   }
 
@@ -83,7 +83,7 @@ function App(): JSX.Element {
         }
       } else {
         // Permission denied or error
-        console.error('Failed to enable for site');
+        // Failed to enable - user will see no change
         return;
       }
     } else {

@@ -351,7 +351,7 @@ export class PageControl {
     
     if (hasOverlap) {
       // Move up
-      this.element.style.bottom = '100px';
+      this.element.classList.add('fluent-control-adjusted');
     }
   }
 

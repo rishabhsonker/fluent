@@ -39,7 +39,18 @@ interface SiteConfig {
 (async function() {
   'use strict';
 
-  console.log('Fluent: Content script loaded');
+  // Singleton pattern - prevent multiple injections
+  if (window.__fluent?.initialized) {
+    return; // Already initialized
+  }
+  
+  // Mark as initializing immediately
+  window.__fluent = {
+    initialized: false,
+    processContent: async () => {},
+    CONFIG: {} as ContentConfig,
+    cleanup: () => {}
+  };
 
   // Initialize anti-fingerprinting
   antiFingerprint.initialize();
@@ -151,8 +162,13 @@ interface SiteConfig {
     
     // Import text processor for batched processing
     if (!textProcessorInstance) {
-      const { TextProcessor } = await import('./textProcessor');
-      textProcessorInstance = new TextProcessor(CONFIG);
+      try {
+        const { TextProcessor } = await import('./textProcessor');
+        textProcessorInstance = new TextProcessor(CONFIG);
+      } catch (error) {
+        logger.error('Failed to load text processor', error);
+        return;
+      }
     }
     
     // Collect text nodes using optimized processor
@@ -171,6 +187,7 @@ interface SiteConfig {
         import('../lib/simpleTranslator.js'),
         import('../lib/storage.js')
       ]).then(async ([replacerModule, translatorModule, storageModule]) => {
+        try {
         const { WordReplacer } = replacerModule;
         const { translator } = translatorModule;
         const { getStorage } = storageModule;
@@ -195,18 +212,30 @@ interface SiteConfig {
         }
         
         // Analyze and select words (now async with spaced repetition)
-        const wordsToReplace = await replacerInstance.analyzeText(textNodes);
+        let wordsToReplace;
+        try {
+          wordsToReplace = await replacerInstance.analyzeText(textNodes);
+        } catch (error) {
+          logger.error('Failed to analyze text', error);
+          return;
+        }
         logger.debug(`Selected ${wordsToReplace.length} words for replacement`);
         
         if (wordsToReplace.length === 0) {
           return;
         }
         
-        // Get translations
-        const result = await translator.translate(
-          wordsToReplace,
-          targetLanguage
-        );
+        // Get translations with error handling
+        let result;
+        try {
+          result = await translator.translate(
+            wordsToReplace,
+            targetLanguage
+          );
+        } catch (error) {
+          logger.error('Translation failed', error);
+          return;
+        }
         
         if (result.error) {
           logger.warn(result.error);
@@ -221,24 +250,43 @@ interface SiteConfig {
           translationMap[word.toLowerCase()] = translations[word] || word;
         }
         
-        // Replace words
-        const replacedCount = await replacerInstance.replaceWords(textNodes, wordsToReplace, translationMap);
+        // Replace words with error handling
+        let replacedCount = 0;
+        try {
+          replacedCount = await replacerInstance.replaceWords(textNodes, wordsToReplace, translationMap);
+        } catch (error) {
+          logger.error('Failed to replace words', error);
+          return;
+        }
         logger.debug(`Replaced ${replacedCount} words`);
         
-        // Update daily stats
+        // Update daily stats with error handling
         if (replacedCount > 0) {
-          const stats = await storage.getDailyStats();
-          await storage.updateDailyStats({
-            wordsLearned: stats.wordsLearned + replacedCount,
-            pagesVisited: stats.pagesVisited + 1
-          });
+          try {
+            const stats = await storage.getDailyStats();
+            await storage.updateDailyStats({
+              wordsLearned: stats.wordsLearned + replacedCount,
+              pagesVisited: stats.pagesVisited + 1
+            });
+          } catch (error) {
+            logger.error('Failed to update stats', error);
+            // Non-critical - continue
+          }
         }
         
         // Cleanup replacer after use
         replacerInstance.cleanup();
         replacerInstance = null;
+        } catch (error) {
+          logger.error('Error in word replacement process', error);
+          // Cleanup on error
+          if (replacerInstance) {
+            replacerInstance.cleanup();
+            replacerInstance = null;
+          }
+        }
       }).catch(err => {
-        logger.error('Error loading modules', err);
+        logger.error('Critical error loading modules', err);
       });
     }
 
@@ -250,39 +298,65 @@ interface SiteConfig {
   // Initialize components and styles
   async function initializeExtension(): Promise<void> {
     try {
-      console.log('Fluent: Initializing extension...');
-      
       // Load CSS
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = chrome.runtime.getURL('content/styles.css');
       document.head.appendChild(link);
       
-      // Initialize storage
-      const storageModule = await import('../lib/storage.js');
-      const storage = storageModule.getStorage();
-      const settings = await storage.getSettings();
-      console.log('Fluent: Settings loaded:', settings);
+      // Initialize storage with error handling
+      let storage;
+      try {
+        const storageModule = await import('../lib/storage.js');
+        storage = storageModule.getStorage();
+      } catch (error) {
+        logger.error('Failed to load storage module', error);
+        return; // Cannot continue without storage
+      }
       
-      // Initialize Tooltip with storage
-      const tooltipModule = await import('./tooltip');
-      tooltipInstance = new tooltipModule.Tooltip();
-      tooltipInstance.storage = storage;
-      tooltipInstance.currentLanguage = (settings.targetLanguage || 'spanish') as LanguageCode;
+      // Get settings with fallback
+      let settings;
+      try {
+        settings = await storage.getSettings();
+      } catch (error) {
+        logger.error('Failed to load settings', error);
+        settings = { targetLanguage: 'spanish', enabled: true }; // Use defaults
+      }
       
-      // Initialize PageControl
-      const pageControlModule = await import('./PageControl');
-      pageControlInstance = new pageControlModule.PageControl(settings);
+      // Initialize Tooltip with error boundary
+      try {
+        const tooltipModule = await import('./tooltip');
+        tooltipInstance = new tooltipModule.Tooltip();
+        tooltipInstance.storage = storage;
+        tooltipInstance.currentLanguage = (settings.targetLanguage || 'spanish') as LanguageCode;
+      } catch (error) {
+        logger.error('Failed to initialize tooltip', error);
+        // Continue without tooltip - core functionality can still work
+      }
       
-      // Process content
-      processContent();
+      // Initialize PageControl with error boundary
+      try {
+        const pageControlModule = await import('./PageControl');
+        pageControlInstance = new pageControlModule.PageControl(settings);
+      } catch (error) {
+        logger.error('Failed to initialize page control', error);
+        // Continue without page control
+      }
+      
+      // Process content with error boundary
+      try {
+        await processContent();
+      } catch (error) {
+        logger.error('Failed to process content', error);
+      }
     } catch (err) {
-      logger.error('Initialization error', err);
+      logger.error('Critical initialization error', err);
+      // Cleanup on critical failure
+      cleanup();
     }
   }
   
   // Initialize when DOM is ready
-  console.log('Fluent: Document readyState:', document.readyState);
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeExtension);
   } else {
@@ -294,10 +368,27 @@ interface SiteConfig {
     }
   }
 
-  // Set up MutationObserver for SPAs
+  // Set up MutationObserver for SPAs with protection
   const config = getSiteConfig();
   if (config.useMutationObserver) {
-    mutationObserver = new MutationObserver(() => {
+    let mutationCount = 0;
+    const MAX_MUTATIONS_PER_SECOND = 10;
+    let lastMutationTime = Date.now();
+    
+    mutationObserver = new MutationObserver((mutations) => {
+      // Protect against mutation floods
+      const now = Date.now();
+      if (now - lastMutationTime < 1000) {
+        mutationCount++;
+        if (mutationCount > MAX_MUTATIONS_PER_SECOND) {
+          logger.warn('Too many mutations, throttling observer');
+          return;
+        }
+      } else {
+        mutationCount = 0;
+        lastMutationTime = now;
+      }
+      
       clearTimeout(observerTimeout);
       observerTimeout = window.setTimeout(() => {
         if ('requestIdleCallback' in window) {
@@ -366,8 +457,9 @@ interface SiteConfig {
   // Cleanup on page unload
   window.addEventListener('unload', cleanup);
   
-  // Expose API for testing
+  // Update singleton with actual functions and mark as initialized
   window.__fluent = {
+    initialized: true,
     processContent,
     CONFIG,
     cleanup
