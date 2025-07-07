@@ -14,16 +14,21 @@ Learn Spanish, French, or German naturally while browsing the web. Fluent intell
 - **🔊 Native Pronunciation** - Hear how words sound with one click
 - **📊 Spaced Repetition** - Words appear based on your learning progress
 - **🎯 Adaptive Difficulty** - Automatically adjusts to your language level
+- **📱 Offline Support** - Common words available even without internet
 
 ### User Experience
 - **⚡ Lightning Fast** - <50ms processing, works instantly on any page
-- **🌐 Works Everywhere** - Compatible with Reddit, Wikipedia, news sites, and more
+- **🌐 Works Everywhere** - Request permission for any site you want to learn on
 - **🎨 Beautiful UI** - Clean tooltips and intuitive controls
 - **⏸️ Smart Pausing** - Pause on specific sites or everywhere for 6 hours
 - **🚫 Site Blacklist** - Automatically disabled on banking and sensitive sites
+- **🛡️ Anti-Detection** - Advanced fingerprinting protection
 
-### Privacy & Cost
+### Privacy & Security
 - **🔒 Privacy First** - No tracking, all data stored locally
+- **🔐 Encrypted Storage** - API keys protected with AES-256-GCM encryption
+- **🛡️ Secure API** - Authentication between extension and translation service
+- **⚖️ Minimal Permissions** - Only requests access to sites you approve
 - **💰 Free Tier** - 50 words/day at no cost
 - **🔑 BYOK Option** - Use your own API key for unlimited translations
 - **💳 Premium Coming Soon** - $4.99/month for unlimited features
@@ -42,25 +47,40 @@ Learn Spanish, French, or German naturally while browsing the web. Fluent intell
    cd fluent
    ```
 
-2. Install dependencies and build:
+2. Set up environment:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Cloudflare Worker URL (after deployment)
+   ```
+
+3. Install dependencies and build:
    ```bash
    npm install
    npm run build
    ```
 
-3. Load in Chrome:
+4. Load in Chrome:
    - Open Chrome and navigate to `chrome://extensions/`
    - Enable "Developer mode" (top right)
    - Click "Load unpacked"
    - Select the `dist` folder
 
+5. Set up Cloudflare Worker (see [Deployment Guide](workers/cloudflare/DEPLOYMENT_GUIDE.md))
+
 ## 🚀 Getting Started
 
 ### First Time Setup
 1. **Choose Your Language**: Click the Fluent icon and select Spanish 🇪🇸, French 🇫🇷, or German 🇩🇪
-2. **Start Browsing**: Visit any text-heavy website (try Wikipedia or Reddit)
-3. **Hover to Learn**: Hover over blue underlined words to see translations
-4. **Click for More**: Use 🔊 for pronunciation and 💡 to understand why that translation was chosen
+2. **Grant Permission**: Click "Enable on this site" when visiting a website
+3. **Start Learning**: Blue underlined words will appear automatically
+4. **Hover to Learn**: Hover over replaced words to see translations
+5. **Click for More**: Use 🔊 for pronunciation and 💡 to understand why that translation was chosen
+
+### Security Setup (Required for Production)
+1. **Deploy Cloudflare Worker**: Follow the [Deployment Guide](workers/cloudflare/DEPLOYMENT_GUIDE.md)
+2. **Get Shared Secret**: Open extension settings and copy the generated secret
+3. **Configure Worker**: Add the secret to your Cloudflare Worker environment
+4. **Update Extension**: Set your Worker URL in the extension settings
 
 ### Daily Usage Limits
 - **Free Users**: 50 word translations per day
@@ -161,17 +181,22 @@ fluent/
 ```
 
 ### Key Technologies
-- **Content Script**: Vanilla JS for maximum performance
-- **Word Selection**: Smart algorithm prioritizing repeated words
-- **Caching**: 6-tier system from Bloom filters to API
-- **UI Framework**: React for popup, vanilla JS for tooltips
-- **API Proxy**: Cloudflare Worker for security
+- **TypeScript**: Full type safety across the codebase
+- **Content Script**: Optimized TypeScript with performance budgets
+- **Word Selection**: Smart algorithm with memory leak protection
+- **Caching**: Multi-tier system with offline support
+- **UI Framework**: React 18 with error boundaries
+- **API Proxy**: Secure Cloudflare Worker with authentication
+- **Security**: AES-256-GCM encryption, HMAC authentication
 
-### Performance Guarantees
-- ✅ <50ms page processing time
-- ✅ <30MB memory usage
-- ✅ 90%+ cache hit rate
+### Performance & Security Guarantees
+- ✅ <50ms page processing time with performance budgets
+- ✅ <30MB memory usage with automatic cleanup
+- ✅ 90%+ cache hit rate with offline fallback
 - ✅ No impact on page scroll performance
+- ✅ Encrypted API key storage
+- ✅ Anti-fingerprinting protection
+- ✅ Rate limiting and cost protection
 
 ## 🤝 Contributing
 
@@ -182,11 +207,18 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 # Install dependencies
 npm install
 
+# Set up environment
+cp .env.example .env.development
+# Edit .env.development with your settings
+
 # Run in development mode
 npm run dev
 
 # Build for production
 npm run build
+
+# Run security checks
+npm run pre-publish
 
 # Create distribution package
 npm run package
@@ -201,11 +233,14 @@ npm run package
 ## 📊 Roadmap
 
 ### Version 1.0 (Current)
-- ✅ Core word replacement
+- ✅ Core word replacement with TypeScript
 - ✅ 3 languages (Spanish, French, German)
-- ✅ BYOK functionality
+- ✅ BYOK functionality with secure storage
 - ✅ AI context explanations
-- ✅ Per-site controls
+- ✅ Per-site controls with dynamic permissions
+- ✅ Offline support for common words
+- ✅ Anti-fingerprinting protection
+- ✅ Enterprise-grade security
 
 ### Version 1.1 (Next)
 - [ ] Spaced repetition algorithm
@@ -218,6 +253,25 @@ npm run package
 - [ ] Grammar tips
 - [ ] Vocabulary lists
 - [ ] Mobile app companion
+
+## 🔒 Security
+
+### Security Features
+- **Encrypted Storage**: API keys are encrypted with AES-256-GCM
+- **Authentication**: HMAC-based auth between extension and Worker
+- **Rate Limiting**: Server-side protection against abuse
+- **Input Sanitization**: All user inputs and API responses sanitized
+- **Minimal Permissions**: Only requests necessary permissions
+- **Anti-Fingerprinting**: Protection against detection/blocking
+- **Secure Communication**: All API calls use HTTPS
+
+### Security Best Practices
+1. **Never share your shared secret** from the extension settings
+2. **Use environment variables** for sensitive configuration
+3. **Regularly update** the extension for security patches
+4. **Review permissions** before granting access to new sites
+
+For security concerns, see [SECURITY.md](SECURITY.md) or email security@fluent-extension.com
 
 ## ❓ FAQ
 
