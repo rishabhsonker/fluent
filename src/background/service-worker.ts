@@ -4,7 +4,7 @@
 import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS } from '../lib/constants.js';
 import { validator } from '../lib/validator.js';
 import { logger } from '../lib/logger.js';
-import { securityManager } from '../lib/security.js';
+import { serviceWorkerSecurityManager as securityManager } from '../lib/securityServiceWorker.js';
 import { secureCrypto } from '../lib/secureCrypto.js';
 import { ExtensionAuthenticator } from '../lib/auth.js';
 import { contentScriptManager } from './contentScriptManager.js';
