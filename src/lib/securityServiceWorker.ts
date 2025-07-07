@@ -77,8 +77,9 @@ class ServiceWorkerSecurityManager {
       }
       
       if (violations.length > 0) {
-        logger.error('Prototype pollution detected:', violations);
-        throw new Error('Security violation: Prototype pollution detected');
+        logger.warn('Potential prototype pollution detected:', violations);
+        // Don't throw error in production - just log warning
+        // Some extensions or browser features may add properties
       }
     }, 30000); // Check every 30 seconds
   }
