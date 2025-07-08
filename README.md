@@ -10,61 +10,137 @@ Learn Spanish, French, or German naturally while browsing the web. Fluent intell
 
 ### Core Learning Experience
 - **🔄 Smart Word Replacement** - 5-6 carefully selected words per page for optimal learning
-- **💡 AI Context Helper** - Understand why specific translations were chosen with the "Why?" button
+- **💡 AI Context Helper** - Understand why specific translations were chosen with Claude-powered explanations
 - **🔊 Native Pronunciation** - Hear how words sound with one click
 - **📊 Spaced Repetition** - Words appear based on your learning progress
 - **🎯 Adaptive Difficulty** - Automatically adjusts to your language level
-- **📱 Offline Support** - Common words available even without internet
 
 ### User Experience
 - **⚡ Lightning Fast** - <50ms processing, works instantly on any page
-- **🌐 Works Everywhere** - Request permission for any site you want to learn on
+- **🌐 Works Everywhere** - Learn on any text-heavy website
 - **🎨 Beautiful UI** - Clean tooltips and intuitive controls
 - **⏸️ Smart Pausing** - Pause on specific sites or everywhere for 6 hours
 - **🚫 Site Blacklist** - Automatically disabled on banking and sensitive sites
-- **🛡️ Anti-Detection** - Advanced fingerprinting protection
 
 ### Privacy & Security
 - **🔒 Privacy First** - No tracking, all data stored locally
 - **🔐 Encrypted Storage** - API keys protected with AES-256-GCM encryption
-- **🛡️ Secure API** - Authentication between extension and translation service
 - **⚖️ Minimal Permissions** - Only requests access to sites you approve
 - **💰 Free Tier** - 50 words/day at no cost
 - **🔑 BYOK Option** - Use your own API key for unlimited translations
 
 ## 📦 Installation
 
-### From Chrome Web Store (Coming Soon)
-1. Visit the Chrome Web Store page
+### From Chrome Web Store (Recommended)
+1. Visit the [Chrome Web Store page](#) (Coming soon)
 2. Click "Add to Chrome"
 3. Start browsing and learning!
 
 ### From Source (Developers)
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/yourusername/fluent.git
-   cd fluent
-   ```
+```bash
+# Clone repository
+git clone https://github.com/yourusername/fluent.git
+cd fluent
 
-2. Set up environment:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Cloudflare Worker URL (after deployment)
-   ```
+# Install dependencies
+npm install
 
-3. Install dependencies and build:
-   ```bash
-   npm install
-   npm run build
-   ```
+# Build extension
+npm run build
 
-4. Load in Chrome:
-   - Open Chrome and navigate to `chrome://extensions/`
-   - Enable "Developer mode" (top right)
+# Load in Chrome
+# 1. Open chrome://extensions/
+# 2. Enable "Developer mode"
+# 3. Click "Load unpacked"
+# 4. Select the `dist` folder
+```
+
+## 🚀 Deployment Guide
+
+### Prerequisites
+1. Microsoft Azure account with Translator API key
+2. Cloudflare account (free tier is fine)
+3. (Optional) Claude API key for AI explanations
+4. Chrome Web Store Developer account ($5 one-time fee)
+
+### Step 1: Microsoft Translator API Setup
+
+1. Go to [Azure Portal](https://portal.azure.com)
+2. Create a new Translator resource:
+   - Click "Create a resource"
+   - Search for "Translator"
+   - Select pricing tier:
+     - **F0 (Free)**: 2M characters/month
+     - **S1**: $10 per 1M characters
+3. Once created, go to "Keys and Endpoint"
+4. Copy:
+   - **Key 1** (your API key)
+   - **Location/Region** (e.g., "global", "eastus", etc.)
+
+### Step 2: Deploy Cloudflare Worker
+
+#### Install Wrangler CLI
+```bash
+npm install -g wrangler
+```
+
+#### Login to Cloudflare
+```bash
+wrangler login
+```
+
+#### Deploy the Worker
+```bash
+cd workers
+# Add your API keys as secrets
+wrangler secret put TRANSLATOR_API_KEY
+# Paste your Microsoft Translator API key when prompted
+
+# Optional: Add Claude API key for AI context explanations
+wrangler secret put CLAUDE_API_KEY
+# Paste your Claude API key when prompted (or press Enter to skip)
+
+# Deploy to production
+wrangler deploy --env production
+```
+
+Your worker will be available at: `https://fluent-translator.YOUR-SUBDOMAIN.workers.dev`
+
+### Step 3: Update Extension Configuration
+
+1. Update `src/lib/constants.ts`:
+```typescript
+export const API_CONFIG: ApiConfig = {
+  TRANSLATOR_API: 'https://fluent-translator.YOUR-SUBDOMAIN.workers.dev',
+} as const;
+```
+
+2. Rebuild the extension:
+```bash
+npm run build
+npm run package
+```
+
+### Step 4: Test Locally
+
+1. Load the extension in Chrome:
+   - Go to `chrome://extensions/`
+   - Enable "Developer mode"
    - Click "Load unpacked"
    - Select the `dist` folder
 
-5. Set up Cloudflare Worker (see [Deployment Guide](workers/cloudflare/DEPLOYMENT_GUIDE.md))
+2. Test on a webpage:
+   - Visit any text-heavy site (e.g., Wikipedia)
+   - You should see 5-6 words replaced
+   - Hover over blue words to see translations
+
+### Step 5: Publish to Chrome Web Store
+
+1. Go to [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/developer/dashboard)
+2. Click "New Item"
+3. Upload `fluent.zip`
+4. Fill in the listing details
+5. Submit for review
 
 ## 🚀 Getting Started
 
@@ -73,66 +149,26 @@ Learn Spanish, French, or German naturally while browsing the web. Fluent intell
 2. **Grant Permission**: Click "Enable on this site" when visiting a website
 3. **Start Learning**: Blue underlined words will appear automatically
 4. **Hover to Learn**: Hover over replaced words to see translations
-5. **Click for More**: Use 🔊 for pronunciation and 💡 to understand why that translation was chosen
-
-### Security Setup (Required for Production)
-1. **Deploy Cloudflare Worker**: Follow the [Deployment Guide](workers/cloudflare/DEPLOYMENT_GUIDE.md)
-2. **Get Shared Secret**: Open extension settings and copy the generated secret
-3. **Configure Worker**: Add the secret to your Cloudflare Worker environment
-4. **Update Extension**: Set your Worker URL in the extension settings
+5. **Click for More**: Use 🔊 for pronunciation and 💡 for AI-powered explanations
 
 ### Daily Usage Limits
 - **Free Users**: 50 word translations per day
 - **BYOK Users**: Unlimited translations with your own API key
-
-## 🔑 BYOK (Bring Your Own Key) Setup
-
-Want unlimited translations? Use your own Microsoft Translator API key!
-
-### Step 1: Get a Microsoft Azure Account
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Sign up for a free account (includes $200 credit)
-3. No credit card required for free tier
-
-### Step 2: Create a Translator Resource
-1. In Azure Portal, click "Create a resource"
-2. Search for "Translator" and select it
-3. Click "Create" and fill in:
-   - **Subscription**: Your subscription
-   - **Resource group**: Create new or select existing
-   - **Region**: Choose any region
-   - **Name**: Any unique name (e.g., "fluent-translator")
-   - **Pricing tier**: F0 (Free - 2M chars/month) or S1 (Pay as you go)
-
-### Step 3: Get Your API Key
-1. Go to your Translator resource
-2. Click "Keys and Endpoint" in the left menu
-3. Copy either KEY 1 or KEY 2
-
-### Step 4: Add to Fluent
-1. Click the Fluent extension icon
-2. Click "Settings" at the bottom
-3. Paste your API key in the "Bring Your Own Key" section
-4. Click "Save API Key"
-5. Enjoy unlimited translations! 🎉
-
-### API Costs (Microsoft Translator)
-- **Free Tier (F0)**: 2 million characters/month free
-- **Pay as you go (S1)**: $10 per million characters
-- **Typical usage**: ~500-1000 characters/day = **$0.15-0.30/month**
+- **AI Explanations**: 3 free per day (unlimited with Claude API key)
 
 ## 🎮 How to Use
 
 ### Basic Controls
 - **Hover** over blue words to see translations
 - **Click** 🔊 to hear pronunciation
-- **Click** 💡 to understand why this translation was chosen
+- **Click** 💡 to understand why this translation was chosen (AI-powered)
 - **Tab** through words for keyboard navigation
 
 ### Page Control Widget (Bottom Right)
 - **Flag Button**: Shows current language, click to open menu
 - **Language Switch**: Instantly change between Spanish, French, or German
 - **Pause Options**:
+  - "Pause everywhere" - Disable on all sites for 6 hours
   - "Pause this site" - Disable for 6 hours on current site
   - "Disable for this site" - Permanently disable on current domain
 
@@ -141,27 +177,6 @@ Want unlimited translations? Use your own Microsoft Translator API key!
 - **Language Selection**: Choose your target language
 - **Progress**: Track daily words learned
 - **Settings**: Configure API key and preferences
-- **Blocked Sites**: Manage site blacklist
-
-## 🛠️ Advanced Configuration
-
-### Site-Specific Settings
-The extension automatically adjusts for different websites:
-- **Reddit**: Works with dynamically loaded comments
-- **Wikipedia**: Focuses on article content
-- **News Sites**: Targets article text
-- **GitHub**: Avoids code blocks
-
-### Performance Settings
-Located in Settings:
-- **Words per page**: 3, 5, 6 (default), or 8 words
-- **Difficulty level**: Beginner, Intermediate, or Advanced
-
-### Privacy Settings
-- All translations cached locally
-- No external tracking
-- API keys encrypted in Chrome storage
-- Auto-cleanup of old data after 30 days
 
 ## 🏗️ Architecture
 
@@ -174,40 +189,48 @@ fluent/
 │   ├── background/      # Service worker
 │   └── lib/            # Shared utilities
 ├── workers/
-│   └── cloudflare/     # Translation API proxy
+│   └── translator-worker.js  # Cloudflare Worker
 └── dist/               # Built extension
 ```
 
 ### Key Technologies
 - **TypeScript**: Full type safety across the codebase
-- **Content Script**: Optimized TypeScript with performance budgets
-- **Word Selection**: Smart algorithm with memory leak protection
-- **Caching**: Multi-tier system with offline support
-- **UI Framework**: React 18 with error boundaries
-- **API Proxy**: Secure Cloudflare Worker with authentication
-- **Security**: AES-256-GCM encryption, HMAC authentication
+- **React 18**: Modern UI with hooks
+- **Vite**: Fast build tool
+- **Cloudflare Workers**: Serverless API proxy
+- **Microsoft Translator**: Professional translations
+- **Claude AI**: Intelligent context explanations
 
-### Performance & Security Guarantees
-- ✅ <50ms page processing time with performance budgets
-- ✅ <30MB memory usage with automatic cleanup
-- ✅ 90%+ cache hit rate with offline fallback
+### Performance Guarantees
+- ✅ <50ms page processing time
+- ✅ <30MB memory usage
+- ✅ 90%+ cache hit rate
 - ✅ No impact on page scroll performance
-- ✅ Encrypted API key storage
-- ✅ Anti-fingerprinting protection
-- ✅ Rate limiting and cost protection
 
-## 🤝 Contributing
+## 💰 Cost Analysis
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+### Microsoft Translator
+- **Free tier (F0)**: 2M characters/month
+- **Typical usage**: ~500-1000 chars/day
+- **Monthly cost**: $0 (free tier) or ~$0.15-0.30 (paid)
 
-### Development Setup
+### Claude API (Optional)
+- **Model**: Claude 3 Haiku
+- **Cost**: $0.25 per 1M tokens
+- **Typical usage**: ~1000 tokens/day
+- **Monthly cost**: ~$0.01
+
+### Cloudflare Workers
+- **Free tier**: 100k requests/day
+- **Typical usage**: Well within free tier
+- **Monthly cost**: $0
+
+## 🛠️ Development
+
+### Setup
 ```bash
 # Install dependencies
 npm install
-
-# Set up environment
-cp .env.example .env.development
-# Edit .env.development with your settings
 
 # Run in development mode
 npm run dev
@@ -222,100 +245,53 @@ npm run pre-publish
 npm run package
 ```
 
-### Key Areas for Contribution
-- Language-specific improvements (German capitalization, French accents)
-- Additional language support
-- Performance optimizations
-- UI/UX enhancements
-
-## 📊 Roadmap
-
-### Version 1.0 (Current)
-- ✅ Core word replacement with TypeScript
-- ✅ 3 languages (Spanish, French, German)
-- ✅ BYOK functionality with secure storage
-- ✅ AI context explanations
-- ✅ Per-site controls with dynamic permissions
-- ✅ Offline support for common words
-- ✅ Anti-fingerprinting protection
-- ✅ Enterprise-grade security
-
-### Version 1.1 (Next)
-- [ ] Spaced repetition algorithm
-- [ ] Progress tracking
-- [ ] Export learned words
-- [ ] Offline mode
-
-### Version 2.0 (Future)
-- [ ] Italian and Portuguese
-- [ ] Grammar tips
-- [ ] Vocabulary lists
-- [ ] Mobile app companion
+### Project Structure
+- `src/content/` - Content script that replaces words
+- `src/popup/` - React app for extension popup
+- `src/background/` - Service worker for API calls
+- `src/lib/` - Shared utilities and constants
+- `workers/` - Cloudflare Worker code
 
 ## 🔒 Security
 
 ### Security Features
-- **Encrypted Storage**: API keys are encrypted with AES-256-GCM
-- **Authentication**: HMAC-based auth between extension and Worker
-- **Rate Limiting**: Server-side protection against abuse
-- **Input Sanitization**: All user inputs and API responses sanitized
-- **Minimal Permissions**: Only requests necessary permissions
-- **Anti-Fingerprinting**: Protection against detection/blocking
+- **Encrypted Storage**: API keys encrypted with AES-256-GCM
 - **Secure Communication**: All API calls use HTTPS
+- **Input Sanitization**: All user inputs sanitized
+- **Rate Limiting**: Server-side protection
+- **Minimal Permissions**: Only activeTab and storage
 
-### Security Best Practices
-1. **Never share your shared secret** from the extension settings
-2. **Use environment variables** for sensitive configuration
-3. **Regularly update** the extension for security patches
-4. **Review permissions** before granting access to new sites
+### Troubleshooting
 
-For security concerns, see [SECURITY.md](SECURITY.md) or email security@fluent-extension.com
-
-## ❓ FAQ
-
-**Q: Why only 5-6 words per page?**
-A: Research shows this is the optimal number for retention without disrupting reading flow.
-
-**Q: Can I use Fluent on work computers?**
-A: Yes! Fluent stores all data locally and doesn't require any special permissions.
-
-**Q: How accurate are the translations?**
-A: We use Microsoft Translator, which provides professional-quality translations.
-
-**Q: Will this slow down my browsing?**
-A: No. Fluent processes pages in <50ms and has strict performance limits.
-
-**Q: Can I trust Fluent with my API key?**
-A: Yes. Your API key is encrypted and stored only in Chrome's secure storage. It's never sent anywhere except Microsoft's API.
-
-## 🐛 Troubleshooting
-
-### Extension Not Working
-1. Check if the site is blacklisted (banking, government sites)
-2. Ensure you haven't hit the daily limit (50 words)
+#### Extension Not Working
+1. Check if the site is blacklisted (banking sites)
+2. Ensure you haven't hit the daily limit
 3. Try refreshing the page
-4. Check Chrome console for errors (F12)
+4. Check DevTools console for errors
 
-### Translations Not Appearing
-1. Verify the page has enough text content
-2. Check if site is paused in Page Control widget
+#### Worker Issues
+- Check Cloudflare dashboard for errors
+- Verify API key is set: `wrangler secret list`
+- Check worker logs: `wrangler tail`
+
+#### No Translations Appearing
+1. Verify page has enough text
+2. Check if site is paused
 3. Ensure correct language is selected
+4. Verify worker URL in constants.ts
 
-### API Key Issues
-1. Verify key is correctly copied (no spaces)
-2. Check Azure portal for key validity
-3. Ensure Translator resource is not suspended
+## 🤝 Contributing
+
+We welcome contributions! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Run tests and linting
+4. Submit a pull request
 
 ## 📄 License
 
-Apache License 2.0 - See [LICENSE](LICENSE) file for details
-
-## 🙏 Acknowledgments
-
-- Microsoft Translator API for accurate translations
-- Chrome Extension community for guidance
-- Language learners who inspired this project
+Apache License 2.0 - See [LICENSE](LICENSE) file
 
 ---
 
-Made with ❤️ for language learners everywhere. [Report Issues](https://github.com/yourusername/fluent/issues) | [Request Features](https://github.com/yourusername/fluent/discussions)
+Made with ❤️ for language learners everywhere

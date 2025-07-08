@@ -1,7 +1,7 @@
 // Fluent Service Worker - Handles storage, caching, and API calls
 'use strict';
 
-import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS } from '../lib/constants.js';
+import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS, API_CONFIG } from '../lib/constants.js';
 import { validator } from '../lib/validator.js';
 import { logger } from '../lib/logger.js';
 import { serviceWorkerSecurityManager as securityManager } from '../lib/securityServiceWorker.js';
@@ -437,33 +437,61 @@ async function getContextExplanation(request: { word: string; translation: strin
 // Generate context using AI (Claude Haiku)
 async function generateContext(prompt: string): Promise<{ text?: string; error?: string }> {
   try {
-    // Check for API key
-    const apiKeyResult = await getApiKey();
-    const apiKey = apiKeyResult.apiKey;
-    
-    if (!apiKey) {
-      // For MVP, return a generic explanation
+    // Check if we have the Cloudflare Worker URL
+    if (!API_CONFIG.TRANSLATOR_API) {
       return {
         text: JSON.stringify({
-          explanation: 'This translation is the most common and natural choice in this context.',
-          example: 'Usage varies by context.',
-          tip: 'Practice with native speakers to understand nuances.'
+          explanation: 'Translation API not configured.',
+          tip: 'Please configure the Cloudflare Worker first.'
         })
       };
     }
     
-    // In production, this would call Claude API
-    // For now, return mock response
-    return {
-      text: JSON.stringify({
-        explanation: 'This word has multiple meanings, and this translation fits best in your sentence.',
-        example: 'Common phrases help you remember the usage.',
-        tip: 'Pay attention to context clues around the word.'
+    // Parse the prompt to extract word info (it's in our formatted prompt)
+    const wordMatch = prompt.match(/Explain why "([^"]+)" translates to "([^"]+)" in (\w+)/);
+    const word = wordMatch?.[1] || '';
+    const translation = wordMatch?.[2] || '';
+    const language = wordMatch?.[3] || '';
+    
+    // Call Cloudflare Worker with context request
+    const response = await fetch(API_CONFIG.TRANSLATOR_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        type: 'context',
+        prompt,
+        word,
+        translation,
+        language
       })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Worker error: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    
+    return {
+      text: JSON.stringify(result.explanation)
     };
+    
   } catch (error) {
     logger.error('Error generating context', error);
-    return { error: error instanceof Error ? error.message : 'Unknown error' };
+    
+    // Fallback response
+    return {
+      text: JSON.stringify({
+        explanation: 'Unable to generate detailed explanation. The translation is accurate for this context.',
+        tip: 'Try again later for detailed explanations.'
+      })
+    };
   }
 }
 

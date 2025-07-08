@@ -190,8 +190,7 @@ export const WORD_CONFIG: WordConfig = {
 // API Configuration
 export const API_CONFIG: ApiConfig = {
   // Production Cloudflare Worker endpoint
-  // This should be set via environment variable in production
-  TRANSLATOR_API: '',
+  TRANSLATOR_API: 'https://fluent-translator.hq.workers.dev',
 } as const;
 
 // Storage keys
