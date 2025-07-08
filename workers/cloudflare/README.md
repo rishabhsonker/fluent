@@ -57,8 +57,8 @@ wrangler kv:namespace create "USER_KEYS" --preview
 
 ### 4. Configure wrangler.toml
 ```toml
-name = "fluent-translator-secure"
-main = "translator-secure.js"
+name = "fluent-translator"
+main = "translator.js"
 compatibility_date = "2024-01-01"
 
 kv_namespaces = [
@@ -96,7 +96,7 @@ wrangler secret put MONTHLY_COST_LIMIT
 ### 6. Deploy
 ```bash
 # Deploy the secure worker
-wrangler deploy translator-secure.js
+wrangler deploy
 
 # Or use npm scripts
 npm run deploy:worker

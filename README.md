@@ -189,7 +189,8 @@ fluent/
 │   ├── background/      # Service worker
 │   └── lib/            # Shared utilities
 ├── workers/
-│   └── translator-worker.js  # Cloudflare Worker
+│   └── cloudflare/
+│       └── translator.js     # Cloudflare Worker
 └── dist/               # Built extension
 ```
 
