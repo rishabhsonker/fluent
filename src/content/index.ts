@@ -239,7 +239,10 @@ interface SiteConfig {
         
         if (result.error) {
           logger.warn(result.error);
-          // TODO: Show notification to user about limit reached
+          // Show notification to user if daily limit reached
+          if (result.error.includes('daily limit') || result.error.includes('50 words')) {
+            showLimitNotification();
+          }
         }
         
         const translations = result.translations || {};
@@ -465,3 +468,61 @@ interface SiteConfig {
     cleanup
   };
 })();
+
+// Show notification when daily limit is reached
+function showLimitNotification(): void {
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.className = 'fluent-limit-notification';
+  notification.innerHTML = `
+    <div style="
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #3b82f6;
+      color: white;
+      padding: 16px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      max-width: 320px;
+      z-index: 10000;
+      animation: slideIn 0.3s ease-out;
+    ">
+      <strong>Daily limit reached\!</strong><br>
+      You've used your 50 free translations today. 
+      Add your own API key in settings for unlimited translations.
+      <button onclick="this.parentElement.parentElement.remove()" style="
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 4px;
+      ">✕</button>
+    </div>
+  `;
+  
+  // Add animation
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  // Add to page
+  document.body.appendChild(notification);
+  
+  // Auto-remove after 10 seconds
+  setTimeout(() => {
+    notification.remove();
+  }, 10000);
+}

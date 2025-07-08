@@ -72,14 +72,22 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     }
   }
 
-  const handleWordsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-    // TODO: Implement words per page setting
-    // Words per page changed
+  const handleWordsPerPageChange = async (e: React.ChangeEvent<HTMLSelectElement>): Promise<void> => {
+    const wordCount = parseInt(e.target.value);
+    const messageData: UpdateSettingsMessage = { 
+      type: 'UPDATE_SETTINGS', 
+      settings: { wordCount } 
+    };
+    await chrome.runtime.sendMessage(messageData);
   };
 
-  const handleDifficultyChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-    // TODO: Implement difficulty setting
-    // Difficulty changed
+  const handleDifficultyChange = async (e: React.ChangeEvent<HTMLSelectElement>): Promise<void> => {
+    const difficulty = e.target.value as 'beginner' | 'intermediate' | 'advanced';
+    const messageData: UpdateSettingsMessage = { 
+      type: 'UPDATE_SETTINGS', 
+      settings: { difficulty } 
+    };
+    await chrome.runtime.sendMessage(messageData);
   };
 
   return (
