@@ -1,104 +1,112 @@
 // Cloudflare Worker for Fluent Translation API
 // This worker proxies requests to Microsoft Translator API
 
-export default {
-  async fetch(request, env) {
-    // CORS headers
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    };
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request, event))
+})
 
-    // Handle preflight requests
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
+async function handleRequest(request, event) {
+  const env = {
+    TRANSLATOR_API_KEY: TRANSLATOR_API_KEY,
+    TRANSLATOR_REGION: TRANSLATOR_REGION || 'global',
+    CLAUDE_API_KEY: CLAUDE_API_KEY
+  };
+  
+  // CORS headers
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
 
-    // Only allow POST requests
-    if (request.method !== 'POST') {
-      return new Response('Method not allowed', { 
-        status: 405,
-        headers: corsHeaders 
-      });
-    }
-
-    try {
-      // Parse request body
-      const body = await request.json();
-      
-      // Check if this is a context explanation request
-      if (body.type === 'context') {
-        return await handleContextRequest(body, env, corsHeaders);
-      }
-      
-      // Otherwise it's a translation request
-      const { text, from, to } = body;
-
-      // Validate input
-      if (!text || !Array.isArray(text) || text.length === 0) {
-        return new Response(JSON.stringify({ error: 'Invalid text input' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
-
-      if (!to || typeof to !== 'string') {
-        return new Response(JSON.stringify({ error: 'Invalid target language' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
-
-      // Rate limiting check (optional)
-      const clientIP = request.headers.get('CF-Connecting-IP');
-      // You can implement rate limiting here using Cloudflare KV
-
-      // Call Microsoft Translator API
-      const endpoint = 'https://api.cognitive.microsofttranslator.com/translate';
-      const params = new URLSearchParams({
-        'api-version': '3.0',
-        'from': from || 'en',
-        'to': to
-      });
-
-      const response = await fetch(`${endpoint}?${params}`, {
-        method: 'POST',
-        headers: {
-          'Ocp-Apim-Subscription-Key': env.TRANSLATOR_API_KEY,
-          'Ocp-Apim-Subscription-Region': env.TRANSLATOR_REGION || 'global',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(text.map(t => ({ text: t })))
-      });
-
-      if (!response.ok) {
-        throw new Error(`Translation API error: ${response.status}`);
-      }
-
-      const translations = await response.json();
-      
-      // Transform response to our format
-      const result = {};
-      text.forEach((word, index) => {
-        if (translations[index] && translations[index].translations[0]) {
-          result[word] = translations[index].translations[0].text;
-        }
-      });
-
-      return new Response(JSON.stringify({ translations: result }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-
-    } catch (error) {
-      console.error('Translation error:', error);
-      return new Response(JSON.stringify({ error: 'Translation failed' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+  // Handle preflight requests
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
   }
-};
+
+  // Only allow POST requests
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { 
+      status: 405,
+      headers: corsHeaders 
+    });
+  }
+
+  try {
+    // Parse request body
+    const body = await request.json();
+    
+    // Check if this is a context explanation request
+    if (body.type === 'context') {
+      return await handleContextRequest(body, env, corsHeaders);
+    }
+    
+    // Otherwise it's a translation request
+    const { text, from, to } = body;
+
+    // Validate input
+    if (!text || !Array.isArray(text) || text.length === 0) {
+      return new Response(JSON.stringify({ error: 'Invalid text input' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (!to || typeof to !== 'string') {
+      return new Response(JSON.stringify({ error: 'Invalid target language' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Rate limiting check (optional)
+    const clientIP = request.headers.get('CF-Connecting-IP');
+    // You can implement rate limiting here using Cloudflare KV
+
+    // Call Microsoft Translator API
+    const endpoint = 'https://api.cognitive.microsofttranslator.com/translate';
+    const params = new URLSearchParams({
+      'api-version': '3.0',
+      'from': from || 'en',
+      'to': to
+    });
+
+    const response = await fetch(`${endpoint}?${params}`, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': env.TRANSLATOR_API_KEY,
+        'Ocp-Apim-Subscription-Region': env.TRANSLATOR_REGION || 'global',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(text.map(t => ({ text: t })))
+    });
+
+    if (!response.ok) {
+      throw new Error(`Translation API error: ${response.status}`);
+    }
+
+    const translations = await response.json();
+    
+    // Transform response to our format
+    const result = {};
+    text.forEach((word, index) => {
+      if (translations[index] && translations[index].translations[0]) {
+        result[word] = translations[index].translations[0].text;
+      }
+    });
+
+    return new Response(JSON.stringify({ translations: result }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Translation error:', error);
+    return new Response(JSON.stringify({ error: 'Translation failed' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
 
 // Handle Claude API requests for context explanations
 async function handleContextRequest(body, env, corsHeaders) {

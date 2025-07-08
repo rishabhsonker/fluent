@@ -1,6 +1,7 @@
 name = "fluent-translator"
 main = "translator-worker.js"
-compatibility_date = "2024-01-01"
+workers_dev = true
+compatibility_date = "2023-10-01"
 
 [vars]
 TRANSLATOR_REGION = "global"
@@ -13,7 +14,4 @@ vars = { TRANSLATOR_REGION = "global" }
 [env.production]
 vars = { TRANSLATOR_REGION = "global" }
 
-# Add your routes
-routes = [
-  { pattern = "fluent-translator.workers.dev", zone_name = "workers.dev" }
-]
+# The worker will be available at fluent-translator.SUBDOMAIN.workers.dev
