@@ -3,6 +3,7 @@
 'use strict';
 
 import { storage } from './storage';
+import { logger } from './logger';
 import { LanguageCode, ContextExplanation, MessageRequest, MessageResponse } from '../types';
 
 interface CommonExplanations {
@@ -145,7 +146,7 @@ export class ContextHelper {
       
       return explanation;
     } catch (error) {
-      console.error('Error generating explanation:', error);
+      logger.error('Error generating explanation:', error);
       return {
         error: true,
         explanation: 'Unable to generate explanation at this time.'

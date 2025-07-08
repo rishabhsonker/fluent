@@ -1,0 +1,21 @@
+# Cloudflare Worker Development Environment Variables
+# Copy this file to .dev.vars and fill in your values
+# DO NOT commit .dev.vars to version control
+
+# Microsoft Translator API Configuration
+MICROSOFT_TRANSLATOR_KEY=your-microsoft-translator-api-key
+AZURE_REGION=eastus
+
+# Authentication
+FLUENT_SHARED_SECRET=your-shared-secret-for-extension-auth
+
+# Optional: Allowed Extension IDs (comma-separated)
+# Leave empty to allow any Chrome extension
+ALLOWED_EXTENSION_IDS=
+
+# Optional: Environment-specific settings
+ENVIRONMENT=development
+
+# Optional: Rate limiting overrides for development
+# DEV_RATE_LIMIT_OVERRIDE=true
+# DEV_DAILY_WORD_LIMIT=1000

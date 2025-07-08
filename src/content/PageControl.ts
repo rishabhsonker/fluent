@@ -2,6 +2,7 @@
 'use strict';
 
 import type { UserSettings, LanguageCode, MessageRequest, MessageResponse } from '../types';
+import { logger } from '../lib/logger';
 
 interface PageControlSettings extends Partial<UserSettings> {
   targetLanguage: LanguageCode;
@@ -218,7 +219,7 @@ export class PageControl {
       this.closeMenu();
       window.location.reload();
     } catch (error) {
-      console.error('Error changing language:', error);
+      logger.error('Error changing language:', error);
     }
   }
 
@@ -246,7 +247,7 @@ export class PageControl {
       
       this.closeMenu();
     } catch (error) {
-      console.error('Error handling action:', error);
+      logger.error('Error handling action:', error);
     }
   }
 
@@ -313,7 +314,7 @@ export class PageControl {
         this.showActiveState();
       }
     } catch (error) {
-      console.error('Error checking pause state:', error);
+      logger.error('Error checking pause state:', error);
     }
   }
 

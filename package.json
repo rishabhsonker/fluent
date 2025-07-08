@@ -15,14 +15,22 @@
     "package": "npm run build && cd dist && zip -r ../fluent.zip . && cd ..",
     "package:dev": "npm run build:dev && cd dist && zip -r ../fluent-dev.zip . && cd ..",
     "check": "npm run type-check && npm run build && npm run pre-publish",
-    "clean": "rm -rf dist fluent.zip fluent-dev.zip"
+    "clean": "rm -rf dist fluent.zip fluent-dev.zip",
+    "test": "playwright test",
+    "test:unit": "playwright test tests/unit",
+    "test:e2e": "playwright test tests/e2e",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report"
   },
   "devDependencies": {
+    "@playwright/test": "^1.53.2",
     "@types/chrome": "^0.0.329",
     "@types/node": "^24.0.10",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.2.1",
+    "playwright": "^1.53.2",
     "terser": "^5.43.1",
     "typescript": "^5.8.3",
     "vite": "^5.0.12",

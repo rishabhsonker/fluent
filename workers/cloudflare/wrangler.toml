@@ -1,29 +1,62 @@
 name = "fluent-translator"
 main = "translator.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2025-01-01"
 
-# KV Namespace for caching translations
+# Account ID (optional - can use CLOUDFLARE_ACCOUNT_ID env var instead)
+# account_id = "your-account-id"
+
+# KV Namespaces for different data types
 kv_namespaces = [
   { binding = "TRANSLATION_CACHE", id = "90eca25c86964d90b4421803ce41094c", preview_id = "d5bd562d385b4dde947f290af8fe553b" }
 ]
 
-# Environment variables (set in Cloudflare dashboard)
-# [vars]
-# MICROSOFT_TRANSLATOR_KEY = "your-api-key"
+# CPU limits for production
+[limits]
+cpu_ms = 50  # Appropriate for API proxy work
 
-# Routes (optional - can also configure in Cloudflare dashboard)
-# routes = [
-#   { pattern = "translate.yourapp.com/*", zone_name = "yourapp.com" }
-# ]
+# Observability configuration
+[observability]
+enabled = true
+head_sampling_rate = 1.0  # Sample all requests during development
 
+# Environment variables for all environments
+[vars]
+ENVIRONMENT = "development"
+AZURE_REGION = "eastus"
+
+# Production environment
 [env.production]
-name = "fluent-translator"
+name = "fluent-translator-prod"
 kv_namespaces = [
-  { binding = "TRANSLATION_CACHE", id = "your-production-kv-id" }
+  { binding = "TRANSLATION_CACHE", id = "90eca25c86964d90b4421803ce41094c" }
 ]
 
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[env.production.limits]
+cpu_ms = 50
+
+[env.production.observability]
+enabled = true
+head_sampling_rate = 0.1  # Sample 10% of requests to manage costs
+
+# Staging environment
+[env.staging]
+name = "fluent-translator-staging"
+kv_namespaces = [
+  { binding = "TRANSLATION_CACHE", id = "your-staging-kv-id" }
+]
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+
+# Development environment
 [env.development]
 name = "fluent-translator-dev"
 kv_namespaces = [
-  { binding = "TRANSLATION_CACHE", id = "your-dev-kv-id" }
+  { binding = "TRANSLATION_CACHE", id = "d5bd562d385b4dde947f290af8fe553b" }
 ]
+
+[env.development.vars]
+ENVIRONMENT = "development"

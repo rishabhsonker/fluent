@@ -23,26 +23,92 @@ const CACHE_TTL = {
   COST_TRACKING: 24 * 60 * 60, // 24 hours
 };
 
+// Structured logging helpers
+function logInfo(message, context = {}) {
+  console.log(JSON.stringify({
+    level: 'info',
+    message,
+    timestamp: new Date().toISOString(),
+    ...context
+  }));
+}
+
+function logError(message, error, context = {}) {
+  console.error(JSON.stringify({
+    level: 'error',
+    message,
+    error: error instanceof Error ? {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    } : error,
+    timestamp: new Date().toISOString(),
+    ...context
+  }));
+}
+
+function logMetric(metric, value, context = {}) {
+  console.log(JSON.stringify({
+    level: 'metric',
+    metric,
+    value,
+    timestamp: new Date().toISOString(),
+    ...context
+  }));
+}
+
+// Request coalescing to prevent duplicate API calls
+const pendingRequests = new Map();
+
+async function getTranslationWithCoalescing(words, targetLanguage, apiKey, env) {
+  const key = `${targetLanguage}:${words.sort().join(',')}`;
+  
+  // Check if there's already a pending request for these words
+  if (pendingRequests.has(key)) {
+    logInfo('Coalescing duplicate request', { key, wordCount: words.length });
+    return pendingRequests.get(key);
+  }
+  
+  // Create new request promise
+  const promise = callTranslatorAPI(words, targetLanguage, apiKey, env);
+  pendingRequests.set(key, promise);
+  
+  try {
+    const result = await promise;
+    return result;
+  } finally {
+    // Clean up after request completes
+    pendingRequests.delete(key);
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const startTime = Date.now();
     
-    // Security headers
+    // Enhanced security headers following best practices
     const securityHeaders = {
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'X-XSS-Protection': '1; mode=block',
-      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
       'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none';",
+      'Referrer-Policy': 'no-referrer',
+      'Permissions-Policy': 'interest-cohort=()',
     };
 
-    // CORS headers - restrict to Chrome extensions only
+    // Enhanced CORS headers with stricter validation
     const origin = request.headers.get('Origin') || '';
+    const isValidExtension = origin.startsWith('chrome-extension://') && 
+                           origin.length > 19 && 
+                           origin.length < 100;
+    
     const corsHeaders = {
-      'Access-Control-Allow-Origin': origin.startsWith('chrome-extension://') ? origin : '',
+      'Access-Control-Allow-Origin': isValidExtension ? origin : '',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, X-Extension-Id, X-Timestamp, X-Auth-Token, X-Client-Id',
       'Access-Control-Max-Age': '86400',
+      'Access-Control-Allow-Credentials': 'false',
     };
 
     const responseHeaders = { ...securityHeaders, ...corsHeaders };
@@ -113,7 +179,11 @@ export default {
 
     } catch (error) {
       // Log error for monitoring
-      console.error('Worker error:', error);
+      // Log error with structured format
+      logError('Worker error', error, {
+        path: request.url,
+        method: request.method
+      });
       
       // Don't expose internal errors to client
       return new Response('Internal server error', {
@@ -147,7 +217,7 @@ async function verifyAuthentication(request, env) {
   // Get shared secret from environment
   const sharedSecret = env.FLUENT_SHARED_SECRET;
   if (!sharedSecret) {
-    console.error('FLUENT_SHARED_SECRET not configured');
+    logError('FLUENT_SHARED_SECRET not configured', new Error('Missing configuration'));
     return { status: 500, message: 'Server configuration error' };
   }
 
@@ -301,8 +371,8 @@ async function handleTranslate(request, env, ctx) {
       }
 
       try {
-        // Call translation API
-        const apiTranslations = await callTranslatorAPI(
+        // Call translation API with request coalescing
+        const apiTranslations = await getTranslationWithCoalescing(
           wordsToTranslate,
           targetLanguage,
           translationApiKey,
@@ -335,7 +405,10 @@ async function handleTranslate(request, env, ctx) {
         }
 
       } catch (error) {
-        console.error('Translation API error:', error);
+        logError('Translation API error', error, {
+          wordCount: words.length,
+          targetLanguage
+        });
         return new Response(JSON.stringify({ 
           error: 'Translation service error',
           message: 'Unable to translate words at this time'
@@ -348,6 +421,16 @@ async function handleTranslate(request, env, ctx) {
 
     // Update rate limit counters
     ctx.waitUntil(updateRateLimit(clientId, validWords.length, !!apiKey, env));
+
+    // Log successful request metrics
+    logInfo('Translation request completed', {
+      clientId,
+      wordCount: validWords.length,
+      targetLanguage,
+      cacheHitRate: cacheStats.hits / (cacheStats.hits + cacheStats.misses),
+      processingTimeMs: Date.now() - startTime,
+      environment: env.ENVIRONMENT
+    });
 
     // Return response with metadata
     return new Response(JSON.stringify({ 
@@ -368,7 +451,10 @@ async function handleTranslate(request, env, ctx) {
     });
 
   } catch (error) {
-    console.error('Translation handler error:', error);
+    logError('Translation handler error', error, {
+      clientId,
+      wordCount: validWords?.length || 0
+    });
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -526,9 +612,10 @@ async function updateCostTracking(characterCount, env) {
 }
 
 /**
- * Call Microsoft Translator API
+ * Call Microsoft Translator API with batch optimization
  */
 async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
+  const BATCH_SIZE = 25; // Microsoft Translator optimal batch size
   const endpoint = 'https://api.cognitive.microsofttranslator.com/translate';
   const params = new URLSearchParams({
     'api-version': '3.0',
@@ -536,6 +623,57 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
     'to': targetLanguage,
   });
 
+  // If words exceed batch size, process in batches
+  if (words.length > BATCH_SIZE) {
+    logInfo('Processing large translation request in batches', {
+      totalWords: words.length,
+      batchSize: BATCH_SIZE,
+      batches: Math.ceil(words.length / BATCH_SIZE)
+    });
+    
+    const results = {};
+    const batches = [];
+    
+    // Create batches
+    for (let i = 0; i < words.length; i += BATCH_SIZE) {
+      batches.push(words.slice(i, i + BATCH_SIZE));
+    }
+    
+    // Process batches in parallel
+    const batchPromises = batches.map(async (batch) => {
+      const response = await fetch(`${endpoint}?${params}`, {
+        method: 'POST',
+        headers: {
+          'Ocp-Apim-Subscription-Key': apiKey,
+          'Ocp-Apim-Subscription-Region': env.AZURE_REGION || 'global',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(batch.map(word => ({ text: word }))),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Batch translation failed: ${response.status}`);
+      }
+      
+      return { batch, result: await response.json() };
+    });
+    
+    // Wait for all batches
+    const batchResults = await Promise.all(batchPromises);
+    
+    // Combine results
+    for (const { batch, result } of batchResults) {
+      for (let i = 0; i < batch.length; i++) {
+        if (result[i]?.translations?.[0]?.text) {
+          results[batch[i]] = result[i].translations[0].text;
+        }
+      }
+    }
+    
+    return results;
+  }
+
+  // Process single batch
   const response = await fetch(`${endpoint}?${params}`, {
     method: 'POST',
     headers: {
@@ -548,7 +686,11 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Translator API error:', response.status, errorText);
+    logError('Translator API error', new Error(`API returned ${response.status}: ${errorText}`), {
+      status: response.status,
+      targetLanguage,
+      wordCount: words.length
+    });
     throw new Error(`Translator API error: ${response.status}`);
   }
 

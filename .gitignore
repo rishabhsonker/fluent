@@ -28,20 +28,25 @@ yarn-error.log*
 # env files
 .env*.local
 .env
+.dev.vars
 
 # OS files
 Thumbs.db
 
-# Project-specific files
+# Project-specific development files
 CLAUDE.md
 TODO.md
 NOTES.md
 AUDIT_REPORT.md
+CODE_AUDIT_REPORT.md
 QUICK_START.md
 TESTING_GUIDE.md
 PRODUCTION_CHECKLIST.md
+TECH_DEBT_CLEANUP.md
 *.backup
 *.tmp
+*-dev.md
+*-draft.md
 
 # API keys and secrets
 api-keys.json
@@ -55,6 +60,11 @@ dev-notes.txt
 # Test coverage
 coverage/
 .nyc_output/
+
+# Playwright test results
+test-results/
+playwright-report/
+playwright/.cache/
 
 # Editor specific
 *.sublime-workspace

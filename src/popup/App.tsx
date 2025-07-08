@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SUPPORTED_LANGUAGES } from '../lib/constants';
 import BlacklistManager from './components/BlacklistManager';
 import Settings from './components/Settings';
-import type { UserSettings, LanguageCode, LanguageConfig } from '../types';
+import type { UserSettings, LanguageCode, SupportedLanguage } from '../types';
 
 type TabType = 'main' | 'blacklist';
 
@@ -23,7 +23,7 @@ interface LearningStats {
   todayReviews: number;
 }
 
-function App(): JSX.Element {
+function App(): React.JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [siteEnabled, setSiteEnabled] = useState<boolean>(true);
@@ -107,7 +107,7 @@ function App(): JSX.Element {
   async function updateLanguage(language: string): Promise<void> {
     if (!settings) return;
     
-    setSettings({ ...settings, targetLanguage: language });
+    setSettings({ ...settings, targetLanguage: language as LanguageCode });
     await chrome.runtime.sendMessage({
       type: 'UPDATE_SETTINGS',
       settings: { targetLanguage: language }
@@ -173,7 +173,7 @@ function App(): JSX.Element {
           <div className="fluent-section">
             <h2 className="fluent-section-title">Language</h2>
             <div className="fluent-language-grid">
-              {(Object.entries(SUPPORTED_LANGUAGES) as Array<[string, LanguageConfig]>).map(([key, lang]) => (
+              {(Object.entries(SUPPORTED_LANGUAGES) as Array<[string, SupportedLanguage]>).map(([key, lang]) => (
                 <button
                   key={key}
                   className={`fluent-lang-button ${settings.targetLanguage === key ? 'fluent-lang-button-active' : ''}`}

@@ -3,7 +3,6 @@
 
 import { logger } from '../lib/logger';
 import { TIMING } from '../lib/constants';
-import { antiFingerprint } from '../lib/antiFingerprintManager';
 import type { LanguageCode, WordProgress, ContextExplanation, MessageResponse } from '../types';
 
 interface LanguageInfo {
@@ -253,13 +252,13 @@ export class Tooltip {
     }
 
     // Delay show with anti-fingerprinting variance
-    const delay = antiFingerprint.varyNumber(TIMING.TOOLTIP_SHOW_DELAY_MS, 0.3);
+    const delay = TIMING.TOOLTIP_SHOW_DELAY_MS;
     
     this.showTimeout = window.setTimeout(async () => {
       this.currentTarget = element;
       
       // Add random micro-delay
-      await antiFingerprint.addRandomDelay('tooltipShow');
+      // Show immediately for better UX
       
       // Get data (check for randomized attribute names)
       const original = element.getAttribute('data-original') || 

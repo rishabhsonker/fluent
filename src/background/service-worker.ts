@@ -390,24 +390,6 @@ async function getDailyUsage(): Promise<{ count: number; date: string }> {
   }
 }
 
-// Update daily usage count (currently unused but kept for future use)
-// @ts-ignore - unused function
-async function updateDailyUsage(increment: number): Promise<{ count: number; date: string } | null> {
-  try {
-    const usage = await getDailyUsage();
-    usage.count += increment;
-    await chrome.storage.local.set({ 
-      dailyUsage: { 
-        date: usage.date, 
-        count: usage.count 
-      } 
-    });
-    return usage;
-  } catch (error) {
-    logger.error('Error updating daily usage', error);
-    return null;
-  }
-}
 
 // Get context explanation for a word
 async function getContextExplanation(request: { word: string; translation: string; language: string; sentence: string }): Promise<any> {

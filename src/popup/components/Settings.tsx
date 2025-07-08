@@ -12,6 +12,14 @@ interface DailyUsageResponse {
   count?: number;
 }
 
+interface UpdateSettingsMessage {
+  type: 'UPDATE_SETTINGS';
+  settings: {
+    wordCount?: number;
+    difficulty?: 'beginner' | 'intermediate' | 'advanced';
+  };
+}
+
 const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [apiKey, setApiKey] = useState<string>('');
   const [dailyUsage, setDailyUsage] = useState<number>(0);

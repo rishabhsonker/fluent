@@ -2,8 +2,6 @@
 // Target: <50ms processing time, <30MB memory usage
 
 import { logger } from '../lib/logger.js';
-import { errorBoundary } from '../lib/errorBoundaryEnhanced.js';
-import { antiFingerprint } from '../lib/antiFingerprintManager.js';
 import type { UserSettings, LanguageCode } from '../types';
 import type { Tooltip } from './tooltip';
 import type { PageControl } from './PageControl';
@@ -16,6 +14,7 @@ declare global {
       processContent: () => Promise<void>;
       CONFIG: ContentConfig;
       cleanup: () => void;
+      initialized?: boolean;
     };
   }
 }
@@ -52,11 +51,7 @@ interface SiteConfig {
     cleanup: () => {}
   };
 
-  // Initialize anti-fingerprinting
-  antiFingerprint.initialize();
-  
-  // Add random delay to initialization
-  await antiFingerprint.addRandomDelay('initialization');
+  // Initialize immediately for better performance
 
   // Performance monitoring
   const startTime = performance.now();
@@ -197,7 +192,7 @@ interface SiteConfig {
         
         // Get user settings
         const settings = await storage.getSettings();
-        const targetLanguage = settings.targetLanguage || 'spanish';
+        const targetLanguage = (settings.targetLanguage || 'spanish') as LanguageCode;
         
         // Inject storage and language into replacer for spaced repetition
         replacerInstance.storage = storage;
@@ -340,7 +335,10 @@ interface SiteConfig {
       // Initialize PageControl with error boundary
       try {
         const pageControlModule = await import('./PageControl');
-        pageControlInstance = new pageControlModule.PageControl(settings);
+        pageControlInstance = new pageControlModule.PageControl({
+          ...settings,
+          targetLanguage: settings.targetLanguage as LanguageCode
+        });
       } catch (error) {
         logger.error('Failed to initialize page control', error);
         // Continue without page control

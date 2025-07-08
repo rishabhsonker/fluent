@@ -226,7 +226,7 @@ export class OfflineManager {
       logger.error('Failed to save offline data:', error);
       
       // If storage is full, try to save essential data only
-      if (error.message?.includes('QUOTA_BYTES')) {
+      if (error instanceof Error && error.message?.includes('QUOTA_BYTES')) {
         const essential = this.getEssentialData(data);
         await chrome.storage.local.set({
           [this.STORAGE_KEY]: essential

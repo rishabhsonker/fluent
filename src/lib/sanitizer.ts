@@ -2,6 +2,8 @@
  * Sanitization utilities for secure DOM manipulation
  */
 
+import { logger } from './logger';
+
 /**
  * Sanitize text content to prevent XSS attacks
  * Removes any HTML tags and dangerous characters
@@ -107,7 +109,7 @@ export function setSafeAttribute(element: Element, name: string, value: string):
   ];
   
   if (!safeAttributes.includes(name.toLowerCase())) {
-    console.warn(`Attempting to set unsafe attribute: ${name}`);
+    logger.warn(`Attempting to set unsafe attribute: ${name}`);
     return;
   }
   

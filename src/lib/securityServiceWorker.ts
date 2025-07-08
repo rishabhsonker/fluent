@@ -175,7 +175,7 @@ class ServiceWorkerSecurityManager {
 
   // Create secure message with integrity check
   async createSecureMessage(type: string, data: any): Promise<any> {
-    const message = {
+    const message: any = {
       type,
       data,
       timestamp: Date.now(),

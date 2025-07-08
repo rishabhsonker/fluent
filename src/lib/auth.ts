@@ -2,6 +2,8 @@
  * Authentication module for secure communication between extension and Cloudflare Worker
  */
 
+import { logger } from './logger';
+
 interface AuthHeaders {
   'X-Extension-Id': string;
   'X-Timestamp': string;
@@ -105,7 +107,7 @@ async function verifyAuthentication(request, env) {
   // Verify the token
   const sharedSecret = env.FLUENT_SHARED_SECRET;
   if (!sharedSecret) {
-    console.error('FLUENT_SHARED_SECRET not configured');
+    logger.error('FLUENT_SHARED_SECRET not configured');
     return new Response('Server configuration error', { status: 500 });
   }
 

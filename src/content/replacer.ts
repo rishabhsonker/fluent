@@ -2,7 +2,6 @@
 'use strict';
 
 import { logger } from '../lib/logger.js';
-import { errorBoundary as boundaries } from '../lib/errorBoundaryEnhanced.js';
 import { 
   sanitizeText, 
   sanitizeTranslation, 
@@ -10,7 +9,6 @@ import {
   isNodeSafe,
   sanitizeWord
 } from '../lib/sanitizer.js';
-import { antiFingerprint } from '../lib/antiFingerprintManager.js';
 import type { 
   Translation, 
   ReplacementData, 
@@ -184,7 +182,7 @@ export class WordReplacer {
     wordsToReplace: string[], 
     translations: Translation
   ): Promise<number> {
-    const result = await boundaries.replacer.wrap(async () => {
+    try {
       const context: ProcessingContext = {
         startTime: performance.now(),
         replacementCount: 0,
@@ -201,10 +199,13 @@ export class WordReplacer {
       for (const node of textNodes) {
         if (this.shouldStopProcessing(context)) break;
         
-        const nodeReplacements = boundaries.replacer.wrapSync(
-          () => this.processNode(node, wordsToReplace, translations, context),
-          []
-        );
+        let nodeReplacements: ReplacementData[] = [];
+        try {
+          nodeReplacements = this.processNode(node, wordsToReplace, translations, context);
+        } catch (error) {
+          logger.error('Error processing node:', error);
+          continue;
+        }
         
         if (nodeReplacements && nodeReplacements.length > 0) {
           nodesToProcess.push({ node, replacements: nodeReplacements });
@@ -215,11 +216,12 @@ export class WordReplacer {
       await processInChunks(
         nodesToProcess,
         async ({ node, replacements }) => {
-          await boundaries.replacer.wrap(
-            async () => await this.applyReplacements(node, replacements),
-            null
-          );
-          context.replacementCount += replacements.length;
+          try {
+            await this.applyReplacements(node, replacements);
+            context.replacementCount += replacements.length;
+          } catch (error) {
+            logger.error('Error applying replacements:', error);
+          }
         },
         {
           chunkSize: 5,
@@ -228,9 +230,10 @@ export class WordReplacer {
       );
       
       return context.replacementCount;
-    }, 0); // Return 0 replacements on error
-    
-    return result || 0;
+    } catch (error) {
+      logger.error('Error in replaceWords:', error);
+      return 0;
+    }
   }
   
   // Check if we should stop processing
@@ -308,15 +311,11 @@ export class WordReplacer {
   // Create replacement element safely using DOM methods
   private createReplacementElement(original: string, translation: string): HTMLSpanElement {
     const span = document.createElement('span');
-    span.className = antiFingerprint.generateClassName('fluent-word');
-    
-    // Use randomized attribute names to avoid detection
-    const attrOriginal = antiFingerprint.randomizeAttributeName('data-fluent-original');
-    const attrTranslation = antiFingerprint.randomizeAttributeName('data-fluent-translation');
+    span.className = 'fluent-word';
     
     // Use safe attribute setting
-    setSafeAttribute(span, attrOriginal, original);
-    setSafeAttribute(span, attrTranslation, translation);
+    setSafeAttribute(span, 'data-fluent-original', original);
+    setSafeAttribute(span, 'data-fluent-translation', translation);
     setSafeAttribute(span, 'tabindex', '0');
     setSafeAttribute(span, 'role', 'button');
     setSafeAttribute(span, 'aria-label', `Translation: ${original} means ${translation}`);
@@ -332,8 +331,7 @@ export class WordReplacer {
     const parent = node.parentElement;
     if (!parent || replacements.length === 0) return;
     
-    // Add random delay to avoid detection
-    await antiFingerprint.addRandomDelay('wordReplacement');
+    // Process immediately for better performance
     
     // Sort by index (sometimes shuffle order slightly)
     replacements.sort((a, b) => a.index - b.index);
@@ -346,10 +344,8 @@ export class WordReplacer {
     // Build fragment
     const fragment = this.buildReplacementFragment(node, replacements);
     
-    // Replace node with varying DOM operation
-    await antiFingerprint.varyDOMOperation(() => {
-      parent.replaceChild(fragment, node);
-    });
+    // Replace node
+    parent.replaceChild(fragment, node);
   }
   
   // Build fragment with replacements

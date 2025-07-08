@@ -9,6 +9,7 @@ import { logger } from './logger';
 import { costGuard } from './costGuard';
 import { secureCrypto } from './secureCrypto';
 import { ExtensionAuthenticator } from './auth';
+import { offlineManager } from './offlineManager';
 import type { 
   Translation, 
   TranslationResult, 
@@ -247,19 +248,6 @@ export class SimpleTranslator {
       this.stats.apiCalls++;
       return data.translations || {};
     });
-  }
-  
-  // Get mock translations
-  private getMockTranslations(words: string[], targetLanguage: LanguageCode): Translation {
-    // For development/testing only
-    const translations: Translation = {};
-    
-    for (const word of words) {
-      // Return a simple mock translation
-      translations[word] = `[${targetLanguage}:${word}]`;
-    }
-    
-    return translations;
   }
   
   // Get stats

@@ -1,42 +1,307 @@
-# Fluent - Language Learning Chrome Extension
+# Fluent - Learn Languages While Browsing
 
-Learn Spanish, French, or German naturally while browsing the web. Fluent intelligently replaces 5-6 English words with their translations on any webpage, helping you learn through context and repetition.
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/yourusername/fluent/releases)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Coming%20Soon-green.svg)](#)
+[![License](https://img.shields.io/badge/license-Apache%202.0-orange.svg)](LICENSE)
+[![Security](https://img.shields.io/badge/security-A%2B-brightgreen.svg)](SECURITY.md)
 
-![Fluent Demo](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Chrome Extension](https://img.shields.io/badge/platform-Chrome-green.svg)
-![Languages](https://img.shields.io/badge/languages-ES%20%7C%20FR%20%7C%20DE-orange.svg)
+A Chrome extension that helps you learn Spanish, French, or German naturally through contextual word replacements while browsing the web. Fluent intelligently replaces 5-6 English words with their translations on any webpage, enabling immersive language learning without disrupting your browsing experience.
 
-## ✨ Features
+## Table of Contents
 
-### Core Learning Experience
-- **🔄 Smart Word Replacement** - 5-6 carefully selected words per page for optimal learning
-- **💡 AI Context Helper** - Understand why specific translations were chosen with Claude-powered explanations
-- **🔊 Native Pronunciation** - Hear how words sound with one click
-- **📊 Spaced Repetition** - Words appear based on your learning progress
-- **🎯 Adaptive Difficulty** - Automatically adjusts to your language level
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Deployment](#deployment)
+- [Development](#development)
+- [Security](#security)
+- [API Documentation](#api-documentation)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+### Core Learning System
+- **Smart Word Selection** - Intelligently selects 5-6 words per page based on frequency, difficulty, and learning progress
+- **Spaced Repetition** - Uses proven memory techniques to optimize word retention
+- **Contextual Learning** - Words are replaced in their natural context for better comprehension
+- **Multi-Language Support** - Currently supports Spanish, French, and German with more planned
 
 ### User Experience
-- **⚡ Lightning Fast** - <50ms processing, works instantly on any page
-- **🌐 Works Everywhere** - Learn on any text-heavy website
-- **🎨 Beautiful UI** - Clean tooltips and intuitive controls
-- **⏸️ Smart Pausing** - Pause on specific sites or everywhere for 6 hours
-- **🚫 Site Blacklist** - Automatically disabled on banking and sensitive sites
+- **Instant Processing** - Page processing in under 50ms with no impact on browsing performance
+- **Beautiful Tooltips** - Hover over replaced words to see translations, pronunciation, and context
+- **AI-Powered Explanations** - Optional Claude integration explains why specific translations were chosen
+- **Offline Support** - Common words available offline for uninterrupted learning
 
-### Privacy & Security
-- **🔒 Privacy First** - No tracking, all data stored locally
-- **🔐 Encrypted Storage** - API keys protected with AES-256-GCM encryption
-- **⚖️ Minimal Permissions** - Only requests access to sites you approve
-- **💰 Free Tier** - 50 words/day at no cost
-- **🔑 BYOK Option** - Use your own API key for unlimited translations
+### Privacy & Control
+- **Privacy-First Design** - All data stored locally, no tracking or analytics
+- **Per-Site Permissions** - Grant access only to sites you choose
+- **Flexible Pausing** - Pause learning globally or per-site for 6 hours
+- **Smart Blacklisting** - Automatically disabled on banking and sensitive sites
 
-## 📦 Installation
+### Cost Management
+- **Free Tier** - 50 translations per day at no cost
+- **BYOK Support** - Bring your own Microsoft Translator API key for unlimited translations
+- **Transparent Pricing** - Clear visibility into API usage and costs
 
-### From Chrome Web Store (Recommended)
-1. Visit the [Chrome Web Store page](#) (Coming soon)
-2. Click "Add to Chrome"
-3. Start browsing and learning!
+## Installation
 
-### From Source (Developers)
+### Option 1: Chrome Web Store (Recommended)
+*Coming soon - the extension is currently under review*
+
+### Option 2: Install from Source
+
+#### Prerequisites
+- Node.js 18+ and npm
+- Chrome browser
+- Git
+
+#### Steps
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/fluent.git
+   cd fluent
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Build the extension**
+   ```bash
+   npm run build
+   ```
+
+4. **Load in Chrome**
+   - Open Chrome and navigate to `chrome://extensions/`
+   - Enable "Developer mode" (toggle in top right)
+   - Click "Load unpacked"
+   - Select the `dist` folder from the project
+
+5. **Verify installation**
+   - You should see the Fluent extension with a flag icon
+   - Click the icon to access settings
+
+## Usage
+
+### Getting Started
+
+1. **Choose Your Language**
+   - Click the Fluent icon in Chrome toolbar
+   - Select Spanish 🇪🇸, French 🇫🇷, or German 🇩🇪
+
+2. **Enable on a Website**
+   - Navigate to any text-heavy website
+   - Click the Fluent icon
+   - Click "Enable on this site"
+   - Grant permission when prompted
+
+3. **Start Learning**
+   - Blue underlined words are translations
+   - Hover to see original word and pronunciation
+   - Click 🔊 to hear pronunciation
+   - Click 💡 for AI-powered context explanation
+
+### Controls
+
+#### Tooltip Interactions
+- **Hover** - View translation and original word
+- **Tab Navigation** - Use keyboard to navigate between words
+- **Click Actions**:
+  - 🔊 Play pronunciation
+  - 💡 Get context explanation (3 free/day)
+  - ✓ Mark as learned
+
+#### Page Control Widget (Bottom Right)
+- **Flag Icon** - Shows current language, click to switch
+- **Pause Menu**:
+  - "Pause everywhere" - 6-hour global pause
+  - "Pause this site" - 6-hour site-specific pause
+  - "Disable for this site" - Permanent site disable
+
+#### Extension Popup
+- **Site Toggle** - Enable/disable for current site
+- **Language Selector** - Switch target language
+- **Progress Tracker** - View daily learning stats
+- **Settings** - Configure API keys and preferences
+
+### Daily Limits
+
+| Feature | Free Tier | With API Key |
+|---------|-----------|--------------|
+| Word Translations | 50/day | Unlimited |
+| AI Explanations | 3/day | Unlimited* |
+| Languages | All 3 | All 3 |
+| Sites | Unlimited | Unlimited |
+
+*With Claude API key
+
+## Architecture
+
+### System Overview
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│ Chrome Extension│     │ Cloudflare Worker│     │ Translation APIs│
+│   (Client)      │────▶│    (Proxy)       │────▶│   (Services)    │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+         │                        │                        │
+         ▼                        ▼                        ▼
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│ Chrome Storage  │     │  Cloudflare KV   │     │ Microsoft Azure │
+│  (Local Cache)  │     │ (Global Cache)   │     │ Claude AI (Opt) │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+```
+
+### Technology Stack
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Extension | TypeScript, React 18 | Core functionality and UI |
+| Build Tool | Vite | Fast development and optimized builds |
+| API Proxy | Cloudflare Workers | Secure API management and caching |
+| Translation | Microsoft Translator | Professional translations |
+| AI Context | Claude 3 Haiku | Contextual explanations |
+| Storage | Chrome Storage API | Local data persistence |
+| Caching | Cloudflare KV | Global translation cache |
+
+### Project Structure
+
+```
+fluent/
+├── src/
+│   ├── content/          # Content scripts for word replacement
+│   │   ├── index.ts      # Main content script entry
+│   │   ├── replacer.ts   # Word replacement engine
+│   │   ├── tooltip.ts    # Tooltip UI component
+│   │   └── PageControl.ts # In-page control widget
+│   ├── popup/            # Extension popup UI
+│   │   ├── App.tsx       # Main React app
+│   │   └── components/   # React components
+│   ├── background/       # Service worker
+│   │   └── service-worker.ts # API calls and storage
+│   └── lib/              # Shared utilities
+│       ├── translator.ts # Translation service
+│       ├── storage.ts    # Storage abstraction
+│       └── security/     # Security modules
+├── workers/
+│   └── cloudflare/       # Cloudflare Worker code
+│       └── translator.js # API proxy and caching
+├── tests/                # Test suites
+└── dist/                 # Built extension (generated)
+```
+
+## Deployment
+
+### Prerequisites
+
+1. **Microsoft Azure Account**
+   - Sign up at [portal.azure.com](https://portal.azure.com)
+   - Create a Translator resource
+   - Note your API key and region
+
+2. **Cloudflare Account**
+   - Sign up at [cloudflare.com](https://cloudflare.com) (free tier works)
+   - Note your account ID
+
+3. **Chrome Web Store Developer Account** (for publishing)
+   - One-time $5 fee
+   - Register at [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/developer/dashboard)
+
+### Step 1: Deploy Cloudflare Worker
+
+1. **Install Wrangler CLI**
+   ```bash
+   npm install -g wrangler
+   ```
+
+2. **Configure Worker**
+   ```bash
+   cd workers/cloudflare
+   cp wrangler.toml.example wrangler.toml
+   # Edit wrangler.toml with your account details
+   ```
+
+3. **Deploy Worker**
+   ```bash
+   # Login to Cloudflare
+   wrangler login
+   
+   # Deploy to production
+   wrangler deploy --env production
+   ```
+
+4. **Set Environment Secrets**
+   ```bash
+   # Required: Shared secret for authentication
+   wrangler secret put FLUENT_SHARED_SECRET
+   # Generate a secure random string (32+ characters)
+   
+   # Required: Microsoft Translator API key
+   wrangler secret put MICROSOFT_TRANSLATOR_KEY
+   # Enter your Azure Translator key
+   
+   # Optional: Claude API key for AI explanations
+   wrangler secret put CLAUDE_API_KEY
+   # Enter your Anthropic API key
+   
+   # Optional: Azure region (defaults to 'global')
+   wrangler secret put AZURE_REGION
+   # Enter your Azure region (e.g., 'eastus')
+   ```
+
+### Step 2: Configure Extension
+
+1. **Update API endpoint**
+   ```typescript
+   // src/lib/constants.ts
+   export const API_CONFIG = {
+     TRANSLATOR_API: 'https://fluent-translator.YOUR-SUBDOMAIN.workers.dev',
+   };
+   ```
+
+2. **Set shared secret**
+   - Open extension popup
+   - Go to Settings
+   - Copy the authentication secret
+   - Use this as FLUENT_SHARED_SECRET in Worker
+
+3. **Rebuild extension**
+   ```bash
+   npm run build
+   npm run package
+   ```
+
+### Step 3: Test Deployment
+
+1. **Reload extension** in Chrome
+2. **Test on a website** - translations should appear
+3. **Check Worker logs**:
+   ```bash
+   wrangler tail
+   ```
+
+### Step 4: Publish to Chrome Web Store
+
+1. **Prepare assets**:
+   - Screenshots (1280x800 or 640x400)
+   - Promotional images
+   - Privacy policy URL
+
+2. **Upload to store**:
+   - Go to [Developer Dashboard](https://chrome.google.com/webstore/developer/dashboard)
+   - Upload `fluent.zip`
+   - Fill in listing details
+   - Submit for review
+
+## Development
+
+### Setup Development Environment
+
 ```bash
 # Clone repository
 git clone https://github.com/yourusername/fluent.git
@@ -45,254 +310,204 @@ cd fluent
 # Install dependencies
 npm install
 
-# Build extension
-npm run build
-
-# Load in Chrome
-# 1. Open chrome://extensions/
-# 2. Enable "Developer mode"
-# 3. Click "Load unpacked"
-# 4. Select the `dist` folder
-```
-
-## 🚀 Deployment Guide
-
-### Prerequisites
-1. Microsoft Azure account with Translator API key
-2. Cloudflare account (free tier is fine)
-3. (Optional) Claude API key for AI explanations
-4. Chrome Web Store Developer account ($5 one-time fee)
-
-### Step 1: Microsoft Translator API Setup
-
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Create a new Translator resource:
-   - Click "Create a resource"
-   - Search for "Translator"
-   - Select pricing tier:
-     - **F0 (Free)**: 2M characters/month
-     - **S1**: $10 per 1M characters
-3. Once created, go to "Keys and Endpoint"
-4. Copy:
-   - **Key 1** (your API key)
-   - **Location/Region** (e.g., "global", "eastus", etc.)
-
-### Step 2: Deploy Cloudflare Worker
-
-#### Install Wrangler CLI
-```bash
-npm install -g wrangler
-```
-
-#### Login to Cloudflare
-```bash
-wrangler login
-```
-
-#### Deploy the Worker
-```bash
-cd workers
-# Add your API keys as secrets
-wrangler secret put TRANSLATOR_API_KEY
-# Paste your Microsoft Translator API key when prompted
-
-# Optional: Add Claude API key for AI context explanations
-wrangler secret put CLAUDE_API_KEY
-# Paste your Claude API key when prompted (or press Enter to skip)
-
-# Deploy to production
-wrangler deploy --env production
-```
-
-Your worker will be available at: `https://fluent-translator.YOUR-SUBDOMAIN.workers.dev`
-
-### Step 3: Update Extension Configuration
-
-1. Update `src/lib/constants.ts`:
-```typescript
-export const API_CONFIG: ApiConfig = {
-  TRANSLATOR_API: 'https://fluent-translator.YOUR-SUBDOMAIN.workers.dev',
-} as const;
-```
-
-2. Rebuild the extension:
-```bash
-npm run build
-npm run package
-```
-
-### Step 4: Test Locally
-
-1. Load the extension in Chrome:
-   - Go to `chrome://extensions/`
-   - Enable "Developer mode"
-   - Click "Load unpacked"
-   - Select the `dist` folder
-
-2. Test on a webpage:
-   - Visit any text-heavy site (e.g., Wikipedia)
-   - You should see 5-6 words replaced
-   - Hover over blue words to see translations
-
-### Step 5: Publish to Chrome Web Store
-
-1. Go to [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/developer/dashboard)
-2. Click "New Item"
-3. Upload `fluent.zip`
-4. Fill in the listing details
-5. Submit for review
-
-## 🚀 Getting Started
-
-### First Time Setup
-1. **Choose Your Language**: Click the Fluent icon and select Spanish 🇪🇸, French 🇫🇷, or German 🇩🇪
-2. **Grant Permission**: Click "Enable on this site" when visiting a website
-3. **Start Learning**: Blue underlined words will appear automatically
-4. **Hover to Learn**: Hover over replaced words to see translations
-5. **Click for More**: Use 🔊 for pronunciation and 💡 for AI-powered explanations
-
-### Daily Usage Limits
-- **Free Users**: 50 word translations per day
-- **BYOK Users**: Unlimited translations with your own API key
-- **AI Explanations**: 3 free per day (unlimited with Claude API key)
-
-## 🎮 How to Use
-
-### Basic Controls
-- **Hover** over blue words to see translations
-- **Click** 🔊 to hear pronunciation
-- **Click** 💡 to understand why this translation was chosen (AI-powered)
-- **Tab** through words for keyboard navigation
-
-### Page Control Widget (Bottom Right)
-- **Flag Button**: Shows current language, click to open menu
-- **Language Switch**: Instantly change between Spanish, French, or German
-- **Pause Options**:
-  - "Pause everywhere" - Disable on all sites for 6 hours
-  - "Pause this site" - Disable for 6 hours on current site
-  - "Disable for this site" - Permanently disable on current domain
-
-### Extension Popup
-- **Site Toggle**: Enable/disable for current site
-- **Language Selection**: Choose your target language
-- **Progress**: Track daily words learned
-- **Settings**: Configure API key and preferences
-
-## 🏗️ Architecture
-
-### Extension Components
-```
-fluent/
-├── src/
-│   ├── content/          # Word replacement engine
-│   ├── popup/           # React settings UI
-│   ├── background/      # Service worker
-│   └── lib/            # Shared utilities
-├── workers/
-│   └── cloudflare/
-│       └── translator.js     # Cloudflare Worker
-└── dist/               # Built extension
-```
-
-### Key Technologies
-- **TypeScript**: Full type safety across the codebase
-- **React 18**: Modern UI with hooks
-- **Vite**: Fast build tool
-- **Cloudflare Workers**: Serverless API proxy
-- **Microsoft Translator**: Professional translations
-- **Claude AI**: Intelligent context explanations
-
-### Performance Guarantees
-- ✅ <50ms page processing time
-- ✅ <30MB memory usage
-- ✅ 90%+ cache hit rate
-- ✅ No impact on page scroll performance
-
-## 💰 Cost Analysis
-
-### Microsoft Translator
-- **Free tier (F0)**: 2M characters/month
-- **Typical usage**: ~500-1000 chars/day
-- **Monthly cost**: $0 (free tier) or ~$0.15-0.30 (paid)
-
-### Claude API (Optional)
-- **Model**: Claude 3 Haiku
-- **Cost**: $0.25 per 1M tokens
-- **Typical usage**: ~1000 tokens/day
-- **Monthly cost**: ~$0.01
-
-### Cloudflare Workers
-- **Free tier**: 100k requests/day
-- **Typical usage**: Well within free tier
-- **Monthly cost**: $0
-
-## 🛠️ Development
-
-### Setup
-```bash
-# Install dependencies
-npm install
-
-# Run in development mode
+# Start development mode with watch
 npm run dev
 
-# Build for production
-npm run build
-
-# Run security checks
-npm run pre-publish
-
-# Create distribution package
-npm run package
+# In another terminal, start local Worker
+cd workers/cloudflare
+wrangler dev
 ```
 
-### Project Structure
-- `src/content/` - Content script that replaces words
-- `src/popup/` - React app for extension popup
-- `src/background/` - Service worker for API calls
-- `src/lib/` - Shared utilities and constants
-- `workers/` - Cloudflare Worker code
+### Available Scripts
 
-## 🔒 Security
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development with hot reload |
+| `npm run build` | Build production extension |
+| `npm run test` | Run test suite |
+| `npm run lint` | Run TypeScript type checking |
+| `npm run package` | Create distribution ZIP |
+| `npm run pre-publish` | Run pre-publication checks |
 
-### Security Features
-- **Encrypted Storage**: API keys encrypted with AES-256-GCM
-- **Secure Communication**: All API calls use HTTPS
-- **Input Sanitization**: All user inputs sanitized
-- **Rate Limiting**: Server-side protection
-- **Minimal Permissions**: Only activeTab and storage
+### Code Quality Standards
 
-### Troubleshooting
+- **TypeScript** - Strict mode enabled, no `any` types
+- **React** - Functional components with hooks
+- **Security** - All inputs validated and sanitized
+- **Performance** - Under 50ms page processing
+- **Memory** - Maximum 30MB usage enforced
 
-#### Extension Not Working
-1. Check if the site is blacklisted (banking sites)
-2. Ensure you haven't hit the daily limit
-3. Try refreshing the page
-4. Check DevTools console for errors
+### Performance Monitoring
 
-#### Worker Issues
-- Check Cloudflare dashboard for errors
-- Verify API key is set: `wrangler secret list`
-- Check worker logs: `wrangler tail`
+The extension tracks key metrics:
+- Page processing time
+- Memory usage
+- Cache hit rates
+- API response times
 
-#### No Translations Appearing
-1. Verify page has enough text
-2. Check if site is paused
-3. Ensure correct language is selected
-4. Verify worker URL in constants.ts
+Access metrics via:
+```javascript
+// In console while on any page
+chrome.runtime.sendMessage(
+  EXTENSION_ID, 
+  { type: 'GET_PERFORMANCE_STATS' },
+  console.log
+);
+```
 
-## 🤝 Contributing
+## Security
 
-We welcome contributions! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Run tests and linting
-4. Submit a pull request
+Fluent implements defense-in-depth security. See [SECURITY.md](SECURITY.md) for full details.
 
-## 📄 License
+### Key Security Features
 
-Apache License 2.0 - See [LICENSE](LICENSE) file
+- **Authentication** - HMAC-SHA256 signed requests
+- **Encryption** - AES-256-GCM for stored secrets
+- **Rate Limiting** - Server-enforced quotas
+- **Input Validation** - All inputs sanitized
+- **CSP** - Strict Content Security Policy
+- **Anti-Fingerprinting** - Randomized behaviors
+
+### Reporting Vulnerabilities
+
+Please report security issues privately to: security@fluent-extension.com
+
+Do NOT open public GitHub issues for security vulnerabilities.
+
+## API Documentation
+
+### Content Script API
+
+```typescript
+// Get current settings
+const settings = await chrome.runtime.sendMessage({ 
+  type: 'GET_SETTINGS' 
+});
+
+// Update language
+await chrome.runtime.sendMessage({ 
+  type: 'UPDATE_SETTINGS',
+  settings: { targetLanguage: 'fr' }
+});
+
+// Get translations
+const result = await chrome.runtime.sendMessage({
+  type: 'GET_TRANSLATIONS',
+  words: ['house', 'water'],
+  language: 'es'
+});
+```
+
+### Worker API
+
+```bash
+# Translate words
+curl -X POST https://your-worker.workers.dev/translate \
+  -H "Content-Type: application/json" \
+  -H "X-Extension-Id: YOUR_EXTENSION_ID" \
+  -H "X-Timestamp: $(date +%s)000" \
+  -H "X-Auth-Token: YOUR_HMAC_TOKEN" \
+  -d '{
+    "words": ["hello", "world"],
+    "targetLanguage": "es"
+  }'
+
+# Response
+{
+  "translations": {
+    "hello": "hola",
+    "world": "mundo"
+  },
+  "metadata": {
+    "cacheHits": 1,
+    "cacheMisses": 1
+  }
+}
+```
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run E2E tests only
+npm run test:e2e
+
+# Run with UI
+npm run test:ui
+
+# View test report
+npm run test:report
+```
+
+### Test Coverage
+
+- **Unit Tests** - Core utilities and functions
+- **Integration Tests** - Extension components
+- **E2E Tests** - Full extension flow
+- **Security Tests** - Authentication and encryption
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
+
+### Development Process
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+4. **Push** to the branch (`git push origin feature/amazing-feature`)
+5. **Open** a Pull Request
+
+### Code Style
+
+- Use TypeScript strict mode
+- Follow ESLint configuration
+- Write tests for new features
+- Update documentation
+
+## Troubleshooting
+
+### Common Issues
+
+#### No translations appearing
+1. Check if site is blacklisted
+2. Verify daily limit not exceeded
+3. Ensure sufficient text on page
+4. Check console for errors
+
+#### Authentication errors
+1. Verify shared secret matches
+2. Check Worker logs: `wrangler tail`
+3. Ensure system time is synchronized
+
+#### Performance issues
+1. Check memory usage in Chrome Task Manager
+2. Verify cache is working (90%+ hit rate expected)
+3. Try disabling other extensions
+
+### Debug Mode
+
+Enable debug logging:
+```javascript
+// In extension console
+chrome.storage.local.set({ debugMode: true });
+```
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Microsoft Translator for translation services
+- Anthropic Claude for AI explanations
+- Cloudflare for edge computing platform
+- The open-source community for invaluable tools and libraries
 
 ---
 
-Made with ❤️ for language learners everywhere
+Built with ❤️ for language learners worldwide
