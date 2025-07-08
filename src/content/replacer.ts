@@ -2,7 +2,7 @@
 'use strict';
 
 import { logger } from '../lib/logger.js';
-import { boundaries } from '../lib/errorBoundary.js';
+import { errorBoundary as boundaries } from '../lib/errorBoundaryEnhanced.js';
 import { 
   sanitizeText, 
   sanitizeTranslation, 
