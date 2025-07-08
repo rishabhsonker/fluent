@@ -1,7 +1,7 @@
 // Simple Translation Service - 2-tier caching only
 'use strict';
 
-import { API_CONFIG, STORAGE_KEYS, CACHE_LIMITS } from './constants';
+import { API_CONFIG, STORAGE_KEYS, CACHE_LIMITS, SUPPORTED_LANGUAGES } from './constants';
 import { storage } from './storage';
 import { validator } from './validator';
 import { rateLimiter } from './rateLimiter';
@@ -223,29 +223,93 @@ export class SimpleTranslator {
       // Get authentication headers
       const authHeaders = await ExtensionAuthenticator.generateAuthHeaders();
       
+      // Convert language name to code (e.g., 'spanish' -> 'es')
+      const langCode = SUPPORTED_LANGUAGES[targetLanguage]?.code || targetLanguage;
+      
+      // Debug logging
+      logger.info('Translation request:', {
+        words,
+        targetLanguage: langCode,
+        originalLanguage: targetLanguage
+      });
+      
       const response = await fetch(`${API_CONFIG.TRANSLATOR_API}/translate`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           ...authHeaders
         },
-        body: JSON.stringify({ words, targetLanguage, apiKey })
+        body: JSON.stringify({ words, targetLanguage: langCode, apiKey })
       });
       
       if (!response.ok) {
-        const error = await response.json();
+        let error;
+        try {
+          error = await response.json();
+        } catch (e) {
+          error = { error: 'Failed to parse error response' };
+        }
+        logger.error('Translation API error:', {
+          status: response.status,
+          error: error,
+          request: { words, targetLanguage: langCode, originalTargetLanguage: targetLanguage },
+          requestBody: JSON.stringify({ words, targetLanguage: langCode, apiKey })
+        });
         throw new Error(error.error || 'Translation failed');
       }
       
       const data = await response.json();
       
+      // Ensure we have translations
+      if (!data.translations) {
+        logger.error('No translations in response!', data);
+      }
+      
       // Record cost
-      if (!apiKey) {
+      if (!apiKey && data.translations) {
         const actualChars = JSON.stringify(data.translations).length;
         costGuard.recordUsage('translation', actualChars);
       }
       
       this.stats.apiCalls++;
+      
+      // After getting translations, also get context (pronunciation, meaning, example)
+      if (data.translations && Object.keys(data.translations).length > 0) {
+        try {
+          const contextResponse = await fetch(`${API_CONFIG.TRANSLATOR_API}/context`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              ...authHeaders
+            },
+            body: JSON.stringify({ 
+              words: Object.keys(data.translations), 
+              translations: data.translations,
+              targetLanguage: langCode 
+            })
+          });
+          
+          if (contextResponse.ok) {
+            const contextData = await contextResponse.json();
+            // Attach context to each translation
+            for (const [word, context] of Object.entries(contextData.contexts || {})) {
+              if (data.translations[word] && context) {
+                // Store context with translation using special format
+                data.translations[word] = {
+                  translation: data.translations[word],
+                  pronunciation: context.pronunciation,
+                  meaning: context.meaning,
+                  example: context.example
+                };
+              }
+            }
+          }
+        } catch (error) {
+          // Log but don't fail if context fetch fails
+          logger.warn('Failed to fetch context:', error);
+        }
+      }
+      
       return data.translations || {};
     });
   }

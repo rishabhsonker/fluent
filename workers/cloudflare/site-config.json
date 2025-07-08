@@ -1,0 +1,37 @@
+{
+  "blockedSites": [
+    "gmail.com",
+    "mail.google.com",
+    "superhuman.com",
+    "outlook.com",
+    "mail.yahoo.com",
+    "hey.com",
+    "protonmail.com",
+    "mail.proton.me"
+  ],
+  "optimizedSites": [
+    {
+      "domain": "medium.com",
+      "selector": "article p",
+      "wordsPerPage": 10,
+      "skipSelectors": ["pre", "code"]
+    },
+    {
+      "domain": "wikipedia.org",
+      "selector": "#mw-content-text p",
+      "wordsPerPage": 12,
+      "skipSelectors": [".mw-editsection", ".reference"]
+    }
+  ],
+  "globalSkipSelectors": [
+    "script",
+    "style",
+    "pre",
+    "code",
+    "input",
+    "textarea",
+    "[contenteditable='true']"
+  ],
+  "version": "1.0.0",
+  "lastUpdated": "2025-07-08T21:45:00.000Z"
+}

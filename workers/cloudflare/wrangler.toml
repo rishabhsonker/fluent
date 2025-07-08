@@ -21,7 +21,7 @@ head_sampling_rate = 1.0  # Sample all requests during development
 
 # Environment variables for all environments
 [vars]
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"
 AZURE_REGION = "eastus"
 
 # Production environment

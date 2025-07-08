@@ -31,9 +31,14 @@ A Chrome extension that helps you learn Spanish, French, or German naturally thr
 
 ### User Experience
 - **Instant Processing** - Page processing in under 50ms with no impact on browsing performance
-- **Beautiful Tooltips** - Hover over replaced words to see translations, pronunciation, and context
-- **AI-Powered Explanations** - Optional Claude integration explains why specific translations were chosen
-- **Offline Support** - Common words available offline for uninterrupted learning
+- **Enhanced Tooltips** - Hover over translated words to see:
+  - Pronunciation guide for the translated word
+  - Word mapping (translation = original)
+  - English meaning and definition
+  - Example sentence in target language
+  - Learning progress tracker
+- **AI-Powered Context** - Claude integration provides pronunciation guides and contextual examples
+- **Movable Page Control** - Small, draggable widget for quick language switching and controls
 
 ### Privacy & Control
 - **Privacy-First Design** - All data stored locally, no tracking or analytics
@@ -42,9 +47,10 @@ A Chrome extension that helps you learn Spanish, French, or German naturally thr
 - **Smart Blacklisting** - Automatically disabled on banking and sensitive sites
 
 ### Cost Management
-- **Free Tier** - 50 translations per day at no cost
+- **Free Tier** - 50,000 words per day at no cost
 - **BYOK Support** - Bring your own Microsoft Translator API key for unlimited translations
-- **Transparent Pricing** - Clear visibility into API usage and costs
+- **Dynamic Site Configuration** - Manage blocked and optimized sites without extension updates
+- **Transparent Usage** - Clear visibility into API usage and limits
 
 ## Installation
 

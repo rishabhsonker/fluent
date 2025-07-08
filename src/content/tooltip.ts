@@ -18,7 +18,6 @@ interface EventHandlers {
   tooltipMouseEnter: (() => void) | null;
   tooltipMouseLeave: (() => void) | null;
   pronunciationClick: (() => void) | null;
-  contextClick: (() => void) | null;
   windowScroll: (() => void) | null;
   windowResize: (() => void) | null;
 }
@@ -46,7 +45,6 @@ export class Tooltip {
     tooltipMouseEnter: null,
     tooltipMouseLeave: null,
     pronunciationClick: null,
-    contextClick: null,
     windowScroll: null,
     windowResize: null
   };
@@ -78,29 +76,30 @@ export class Tooltip {
   private buildTooltipDOM(): void {
     if (!this.element) return;
 
-    // Header
-    const header = document.createElement('div');
-    header.className = 'fluent-tooltip-header';
-    
-    const flag = document.createElement('span');
-    flag.className = 'fluent-tooltip-flag';
-    header.appendChild(flag);
-    
-    const language = document.createElement('span');
-    language.className = 'fluent-tooltip-language';
-    header.appendChild(language);
-    
-    this.element.appendChild(header);
-    
-    // Translation
+    // Translation (main word)
     const translation = document.createElement('div');
     translation.className = 'fluent-tooltip-translation';
     this.element.appendChild(translation);
     
-    // Original
-    const original = document.createElement('div');
-    original.className = 'fluent-tooltip-original';
-    this.element.appendChild(original);
+    // Pronunciation
+    const pronunciation = document.createElement('div');
+    pronunciation.className = 'fluent-tooltip-pronunciation';
+    this.element.appendChild(pronunciation);
+    
+    // Word mapping (spanish-word = english-word)
+    const wordMapping = document.createElement('div');
+    wordMapping.className = 'fluent-tooltip-word-mapping';
+    this.element.appendChild(wordMapping);
+    
+    // Meaning
+    const meaning = document.createElement('div');
+    meaning.className = 'fluent-tooltip-meaning';
+    this.element.appendChild(meaning);
+    
+    // Example
+    const example = document.createElement('div');
+    example.className = 'fluent-tooltip-example';
+    this.element.appendChild(example);
     
     // Progress
     const progress = document.createElement('div');
@@ -121,34 +120,7 @@ export class Tooltip {
     
     this.element.appendChild(progress);
     
-    // Actions
-    const actions = document.createElement('div');
-    actions.className = 'fluent-tooltip-actions';
-    
-    const pronunciationBtn = document.createElement('button');
-    pronunciationBtn.className = 'fluent-tooltip-btn fluent-tooltip-pronunciation';
-    pronunciationBtn.setAttribute('aria-label', 'Play pronunciation');
-    pronunciationBtn.textContent = '🔊 Pronunciation';
-    actions.appendChild(pronunciationBtn);
-    
-    const contextBtn = document.createElement('button');
-    contextBtn.className = 'fluent-tooltip-btn fluent-tooltip-context';
-    contextBtn.setAttribute('aria-label', 'Why this translation?');
-    contextBtn.textContent = '💡 Why?';
-    actions.appendChild(contextBtn);
-    
-    this.element.appendChild(actions);
-    
-    // Context panel
-    const contextPanel = document.createElement('div');
-    contextPanel.className = 'fluent-tooltip-context-panel';
-    contextPanel.classList.add('fluent-hidden');
-    
-    const contextContent = document.createElement('div');
-    contextContent.className = 'fluent-tooltip-context-content';
-    contextPanel.appendChild(contextContent);
-    
-    this.element.appendChild(contextPanel);
+    // No action buttons needed
   }
 
   private bindEvents(): void {
@@ -157,14 +129,14 @@ export class Tooltip {
     // Create bound event handlers
     this.eventHandlers.documentMouseEnter = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.classList.contains('fluent-word')) {
+      if (target && target.classList && target.classList.contains('fluent-word')) {
         this.showForElement(target);
       }
     };
     
     this.eventHandlers.documentMouseLeave = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.classList.contains('fluent-word')) {
+      if (target && target.classList && target.classList.contains('fluent-word')) {
         this.scheduleHide();
       }
     };
@@ -179,24 +151,20 @@ export class Tooltip {
     
     this.eventHandlers.documentFocus = (e: FocusEvent) => {
       const target = e.target as HTMLElement;
-      if (target.classList.contains('fluent-word')) {
+      if (target && target.classList && target.classList.contains('fluent-word')) {
         this.showForElement(target);
       }
     };
     
     this.eventHandlers.documentBlur = (e: FocusEvent) => {
       const target = e.target as HTMLElement;
-      if (target.classList.contains('fluent-word')) {
+      if (target && target.classList && target.classList.contains('fluent-word')) {
         this.scheduleHide();
       }
     };
     
     this.eventHandlers.pronunciationClick = () => {
       this.playPronunciation();
-    };
-    
-    this.eventHandlers.contextClick = () => {
-      this.toggleContext();
     };
     
     this.eventHandlers.windowScroll = () => {
@@ -228,21 +196,14 @@ export class Tooltip {
     this.element.addEventListener('mouseenter', this.eventHandlers.tooltipMouseEnter);
     this.element.addEventListener('mouseleave', this.eventHandlers.tooltipMouseLeave);
     
-    const pronunciationBtn = this.element.querySelector('.fluent-tooltip-pronunciation') as HTMLButtonElement;
-    const contextBtn = this.element.querySelector('.fluent-tooltip-context') as HTMLButtonElement;
-    
-    if (pronunciationBtn) {
-      pronunciationBtn.addEventListener('click', this.eventHandlers.pronunciationClick);
-    }
-    if (contextBtn) {
-      contextBtn.addEventListener('click', this.eventHandlers.contextClick);
-    }
+    // No pronunciation button to bind
     
     window.addEventListener('scroll', this.eventHandlers.windowScroll, { passive: true });
     window.addEventListener('resize', this.eventHandlers.windowResize, { passive: true });
   }
 
   private showForElement(element: HTMLElement): void {
+    
     // Cancel any pending hide
     this.cancelHide();
     
@@ -267,8 +228,15 @@ export class Tooltip {
       const translation = element.getAttribute('data-translation') || 
                          element.getAttribute('data-fluent-translation') ||
                          element.getAttribute('data-trans');
+      const pronunciation = element.getAttribute('data-fluent-pronunciation');
+      const meaning = element.getAttribute('data-fluent-meaning');
+      const example = element.getAttribute('data-fluent-example');
       
-      if (!original || !translation) return;
+      
+      if (!original || !translation) {
+        logger.error('Missing tooltip data!');
+        return;
+      }
       
       const language = this.getCurrentLanguage();
       
@@ -286,7 +254,7 @@ export class Tooltip {
       }
       
       // Update content (now async)
-      await this.updateContent(original, translation, language);
+      await this.updateContent(original, translation, language, pronunciation, meaning, example);
       
       // Show and position
       this.show();
@@ -294,20 +262,61 @@ export class Tooltip {
     }, delay);
   }
 
-  private async updateContent(original: string, translation: string, language: LanguageCode): Promise<void> {
+  private async updateContent(
+    original: string, 
+    translation: string, 
+    language: LanguageCode,
+    pronunciation?: string | null,
+    meaning?: string | null,
+    example?: string | null
+  ): Promise<void> {
     if (!this.element) return;
 
-    const languageInfo = this.getLanguageInfo(language);
-    
-    const flagElement = this.element.querySelector('.fluent-tooltip-flag');
-    const languageElement = this.element.querySelector('.fluent-tooltip-language');
     const translationElement = this.element.querySelector('.fluent-tooltip-translation');
-    const originalElement = this.element.querySelector('.fluent-tooltip-original');
+    const pronunciationElement = this.element.querySelector('.fluent-tooltip-pronunciation');
+    const wordMappingElement = this.element.querySelector('.fluent-tooltip-word-mapping');
+    const meaningElement = this.element.querySelector('.fluent-tooltip-meaning');
+    const exampleElement = this.element.querySelector('.fluent-tooltip-example');
 
-    if (flagElement) flagElement.textContent = languageInfo.flag;
-    if (languageElement) languageElement.textContent = languageInfo.name;
+    // 1. Show translated word (larger, prominent)
     if (translationElement) translationElement.textContent = translation;
-    if (originalElement) originalElement.textContent = `"${original}" in English`;
+    
+    // 2. Show pronunciation of translated word (smaller font)
+    if (pronunciationElement) {
+      if (pronunciation) {
+        pronunciationElement.textContent = pronunciation;
+        pronunciationElement.style.display = 'block';
+      } else {
+        pronunciationElement.style.display = 'none';
+      }
+    }
+    
+    // 2.5. Show word mapping
+    if (wordMappingElement) {
+      wordMappingElement.textContent = `${translation} = ${original}`;
+      wordMappingElement.style.display = 'block';
+    }
+    
+    // 3. Show meaning in English
+    if (meaningElement) {
+      if (meaning) {
+        meaningElement.textContent = meaning;
+        meaningElement.style.display = 'block';
+      } else {
+        meaningElement.textContent = `${original} = ${translation}`;
+        meaningElement.style.display = 'block';
+      }
+    }
+    
+    // 4. Show contextual example in target language
+    if (exampleElement) {
+      if (example) {
+        exampleElement.textContent = example;
+        exampleElement.style.display = 'block';
+      } else {
+        exampleElement.style.display = 'none';
+      }
+    }
     
     // Update progress if storage is available
     if (this.storage && this.currentLanguage) {
@@ -326,13 +335,13 @@ export class Tooltip {
             // Set color based on mastery
             if (wordData.mastery >= 80) {
               progressFill.classList.add('fluent-progress-green');
-              progressText.textContent = 'Mastered';
+              progressText.textContent = '';
             } else if (wordData.mastery >= 50) {
               progressFill.classList.add('fluent-progress-yellow');
-              progressText.textContent = 'Learning';
+              progressText.textContent = '';
             } else {
               progressFill.classList.add('fluent-progress-blue');
-              progressText.textContent = 'New';
+              progressText.textContent = '';
             }
           }
           
@@ -417,34 +426,71 @@ export class Tooltip {
 
     const targetRect = this.currentTarget.getBoundingClientRect();
     const tooltipRect = this.element.getBoundingClientRect();
+    console.log('[Fluent] Target rect:', targetRect);
+    console.log('[Fluent] Tooltip rect:', tooltipRect);
+    
     const viewport = {
       width: window.innerWidth,
       height: window.innerHeight
     };
 
-    // Calculate position (above the word by default)
-    let top = targetRect.top - tooltipRect.height - 8;
-    let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+    // Add scroll offsets to get absolute position
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
 
-    // Flip to bottom if not enough space above
-    if (top < 10) {
-      top = targetRect.bottom + 8;
+    // Determine vertical position based on available space
+    let top: number;
+    let tooltipAbove = true;
+    
+    const spaceAbove = targetRect.top;
+    const spaceBelow = viewport.height - targetRect.bottom;
+    const tooltipHeight = tooltipRect.height;
+    
+    // Check if there's enough space above (with 20px margin)
+    if (spaceAbove >= tooltipHeight + 20) {
+      // Place above
+      top = targetRect.top + scrollTop - tooltipHeight - 8;
+      this.element.classList.remove('bottom');
+      this.element.classList.add('top');
+    } else if (spaceBelow >= tooltipHeight + 20) {
+      // Place below
+      top = targetRect.bottom + scrollTop + 8;
+      tooltipAbove = false;
+      this.element.classList.remove('top');
       this.element.classList.add('bottom');
     } else {
-      this.element.classList.remove('bottom');
+      // Not enough space either way, choose the side with more space
+      if (spaceAbove > spaceBelow) {
+        top = Math.max(scrollTop + 10, targetRect.top + scrollTop - tooltipHeight - 8);
+        this.element.classList.remove('bottom');
+        this.element.classList.add('top');
+      } else {
+        top = targetRect.bottom + scrollTop + 8;
+        tooltipAbove = false;
+        this.element.classList.remove('top');
+        this.element.classList.add('bottom');
+      }
     }
 
-    // Keep within viewport horizontally
-    if (left < 10) {
-      left = 10;
-    } else if (left + tooltipRect.width > viewport.width - 10) {
-      left = viewport.width - tooltipRect.width - 10;
+    // Calculate horizontal position (center by default)
+    let left = targetRect.left + scrollLeft + (targetRect.width / 2) - (tooltipRect.width / 2);
+
+    // Keep within viewport horizontally with 10px margins
+    const minLeft = scrollLeft + 10;
+    const maxLeft = scrollLeft + viewport.width - tooltipRect.width - 10;
+    
+    if (left < minLeft) {
+      left = minLeft;
+    } else if (left > maxLeft) {
+      left = maxLeft;
     }
 
     // Apply position
     // Set position using CSS custom properties to avoid inline styles
     this.element.style.setProperty('--tooltip-left', `${left}px`);
     this.element.style.setProperty('--tooltip-top', `${top}px`);
+    
+    console.log('[Fluent] Final tooltip position:', { left, top, above: tooltipAbove });
   }
 
   private async playPronunciation(): Promise<void> {
@@ -496,115 +542,6 @@ export class Tooltip {
     }
   }
 
-  private async toggleContext(): Promise<void> {
-    if (!this.element) return;
-
-    const panel = this.element.querySelector('.fluent-tooltip-context-panel') as HTMLDivElement;
-    const content = this.element.querySelector('.fluent-tooltip-context-content') as HTMLDivElement;
-    const btn = this.element.querySelector('.fluent-tooltip-context') as HTMLButtonElement;
-    
-    if (!panel || !content || !btn) return;
-
-    if (panel.classList.contains('fluent-hidden')) {
-      // Show context
-      panel.classList.remove('fluent-hidden');
-      panel.classList.add('fluent-visible');
-      btn.textContent = '💡 Loading...';
-      
-      // Track context interaction
-      if (this.storage && this.currentLanguage && this.currentTarget) {
-        const original = this.currentTarget.getAttribute('data-original');
-        if (original) {
-          try {
-            await this.storage.recordWordInteraction(
-              original.toLowerCase(),
-              this.currentLanguage,
-              'context'
-            );
-          } catch (error) {
-            logger.error('Failed to record interaction:', error);
-          }
-        }
-      }
-      
-      // Get context explanation
-      const explanation = await this.getContextExplanation();
-      
-      // Clear previous content
-      content.textContent = '';
-      
-      if (explanation) {
-        const explanationDiv = document.createElement('div');
-        explanationDiv.className = 'fluent-context-explanation';
-        explanationDiv.textContent = explanation.explanation;
-        content.appendChild(explanationDiv);
-        
-        if (explanation.example) {
-          const exampleDiv = document.createElement('div');
-          exampleDiv.className = 'fluent-context-example';
-          const strong = document.createElement('strong');
-          strong.textContent = 'Example: ';
-          exampleDiv.appendChild(strong);
-          exampleDiv.appendChild(document.createTextNode(explanation.example));
-          content.appendChild(exampleDiv);
-        }
-        
-        if (explanation.tip) {
-          const tipDiv = document.createElement('div');
-          tipDiv.className = 'fluent-context-tip';
-          const strong = document.createElement('strong');
-          strong.textContent = 'Tip: ';
-          tipDiv.appendChild(strong);
-          tipDiv.appendChild(document.createTextNode(explanation.tip));
-          content.appendChild(tipDiv);
-        }
-      } else {
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'fluent-context-error';
-        errorDiv.textContent = 'Unable to load explanation. Daily limit may be reached.';
-        content.appendChild(errorDiv);
-      }
-      
-      btn.textContent = '💡 Hide';
-      this.updatePosition(); // Reposition tooltip
-    } else {
-      // Hide context
-      panel.classList.remove('fluent-visible');
-      panel.classList.add('fluent-hidden');
-      btn.textContent = '💡 Why?';
-      this.updatePosition();
-    }
-  }
-
-  private async getContextExplanation(): Promise<ContextExplanation | null> {
-    if (!this.currentTarget) return null;
-    
-    const original = this.currentTarget.getAttribute('data-original');
-    const translation = this.currentTarget.getAttribute('data-translation');
-    
-    if (!original || !translation) return null;
-    
-    const language = this.getCurrentLanguage();
-    
-    // Get surrounding sentence for context
-    const sentence = this.getWordContext(this.currentTarget);
-    
-    try {
-      // Request context from background
-      const response = await chrome.runtime.sendMessage({
-        type: 'GET_CONTEXT_EXPLANATION',
-        word: original,
-        translation: translation,
-        language: language,
-        sentence: sentence
-      }) as MessageResponse;
-      
-      return response.data as ContextExplanation;
-    } catch (error) {
-      logger.error('Error getting context:', error);
-      return null;
-    }
-  }
 
   private getWordContext(element: HTMLElement): string {
     // Get the parent text node or container
@@ -666,14 +603,10 @@ export class Tooltip {
         this.element.removeEventListener('mouseleave', this.eventHandlers.tooltipMouseLeave);
       }
       
-      const pronunciationBtn = this.element.querySelector('.fluent-tooltip-pronunciation');
-      const contextBtn = this.element.querySelector('.fluent-tooltip-context');
+      const pronunciationBtn = this.element.querySelector('.fluent-tooltip-pronunciation-btn');
       
       if (pronunciationBtn && this.eventHandlers.pronunciationClick) {
         pronunciationBtn.removeEventListener('click', this.eventHandlers.pronunciationClick);
-      }
-      if (contextBtn && this.eventHandlers.contextClick) {
-        contextBtn.removeEventListener('click', this.eventHandlers.contextClick);
       }
     }
     

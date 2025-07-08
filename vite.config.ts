@@ -28,11 +28,22 @@ export default defineConfig({
           resolve(__dirname, 'dist/manifest.json')
         );
 
-        // Copy content styles
+        // Copy content styles to both locations for compatibility
         if (existsSync('src/content/styles.css')) {
+          // Copy to root as content.css
           copyFileSync(
             resolve(__dirname, 'src/content/styles.css'),
             resolve(__dirname, 'dist/content.css')
+          );
+          
+          // Also copy to content/styles.css to match the import
+          const contentDir = resolve(__dirname, 'dist/content');
+          if (!existsSync(contentDir)) {
+            mkdirSync(contentDir, { recursive: true });
+          }
+          copyFileSync(
+            resolve(__dirname, 'src/content/styles.css'),
+            resolve(__dirname, 'dist/content/styles.css')
           );
         }
 
@@ -63,9 +74,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        popup: resolve(__dirname, 'popup.html'),
-        content: resolve(__dirname, 'src/content/index.ts'),
-        background: resolve(__dirname, 'src/background/service-worker.ts')
+        popup: resolve(__dirname, 'popup.html')
       },
       output: {
         entryFileNames: '[name].js',
@@ -82,9 +91,9 @@ export default defineConfig({
         comments: false // Remove all comments
       },
       compress: {
-        drop_console: true, // Remove all console statements
+        drop_console: false, // Keep console statements for debugging
         drop_debugger: true, // Remove debugger statements
-        pure_funcs: ['console.log', 'console.debug', 'console.info', 'console.warn'],
+        pure_funcs: [], // Don't remove any console functions for now
         passes: 2, // Run compression twice for better optimization
         ecma: 2020,
         module: true,

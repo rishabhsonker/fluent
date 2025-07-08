@@ -180,7 +180,8 @@ export class WordReplacer {
   async replaceWords(
     textNodes: Text[], 
     wordsToReplace: string[], 
-    translations: Translation
+    translations: Translation,
+    contextMap?: Record<string, any>
   ): Promise<number> {
     try {
       const context: ProcessingContext = {
@@ -201,7 +202,7 @@ export class WordReplacer {
         
         let nodeReplacements: ReplacementData[] = [];
         try {
-          nodeReplacements = this.processNode(node, wordsToReplace, translations, context);
+          nodeReplacements = this.processNode(node, wordsToReplace, translations, context, contextMap);
         } catch (error) {
           logger.error('Error processing node:', error);
           continue;
@@ -247,7 +248,8 @@ export class WordReplacer {
     node: Text, 
     wordsToReplace: string[], 
     translations: Translation, 
-    context: ProcessingContext
+    context: ProcessingContext,
+    contextMap?: Record<string, any>
   ): ReplacementData[] {
     const text = node.textContent || '';
     const replacements: ReplacementData[] = [];
@@ -266,11 +268,13 @@ export class WordReplacer {
           continue;
         }
         
+        const wordContext = contextMap?.[word.toLowerCase()];
         replacements.push({
           index: match.index!,
           length: match[0].length,
           original: sanitizeText(match[0]) || match[0],
-          translation: translation
+          translation: translation,
+          context: wordContext
         });
         
         context.replacementCount++;
@@ -309,7 +313,7 @@ export class WordReplacer {
   }
 
   // Create replacement element safely using DOM methods
-  private createReplacementElement(original: string, translation: string): HTMLSpanElement {
+  private createReplacementElement(original: string, translation: string, context?: any): HTMLSpanElement {
     const span = document.createElement('span');
     span.className = 'fluent-word';
     
@@ -320,8 +324,30 @@ export class WordReplacer {
     setSafeAttribute(span, 'role', 'button');
     setSafeAttribute(span, 'aria-label', `Translation: ${original} means ${translation}`);
     
+    // Add context data if available
+    if (context) {
+      if (context.pronunciation) {
+        setSafeAttribute(span, 'data-fluent-pronunciation', context.pronunciation);
+      }
+      if (context.meaning) {
+        setSafeAttribute(span, 'data-fluent-meaning', context.meaning);
+      }
+      if (context.example) {
+        setSafeAttribute(span, 'data-fluent-example', context.example);
+      }
+    }
+    
     // Safe text content, no HTML injection
     span.textContent = translation;
+    
+    // Debug: log element creation
+    console.log('[Fluent] Created element:', {
+      original,
+      translation,
+      context,
+      className: span.className,
+      textContent: span.textContent
+    });
     
     return span;
   }
@@ -364,7 +390,7 @@ export class WordReplacer {
       
       // Add replacement span
       fragment.appendChild(
-        this.createReplacementElement(data.original, data.translation)
+        this.createReplacementElement(data.original, data.translation, data.context)
       );
       
       lastIndex = data.index + data.length;

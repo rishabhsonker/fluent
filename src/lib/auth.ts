@@ -3,6 +3,7 @@
  */
 
 import { logger } from './logger';
+import { AUTH_CONFIG } from '../config/auth.config';
 
 interface AuthHeaders {
   'X-Extension-Id': string;
@@ -11,37 +12,23 @@ interface AuthHeaders {
 }
 
 export class ExtensionAuthenticator {
-  private static readonly TOKEN_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
-  private static sharedSecret: string | null = null;
+  private static readonly TOKEN_EXPIRY_MS = AUTH_CONFIG.TOKEN_EXPIRY_MS;
+  private static readonly sharedSecret: string = AUTH_CONFIG.SHARED_SECRET;
 
   /**
-   * Initialize the authenticator with a shared secret
-   * This should be called once during extension installation
+   * Initialize the authenticator
+   * This method is kept for backward compatibility but no longer needs to do anything
+   * since we're using a fixed shared secret from the config
    */
   static async initialize(): Promise<void> {
-    const stored = await chrome.storage.local.get('authSecret');
-    
-    if (!stored.authSecret) {
-      // Generate a cryptographically secure random secret
-      const array = new Uint8Array(32);
-      crypto.getRandomValues(array);
-      const secret = btoa(String.fromCharCode(...array));
-      
-      await chrome.storage.local.set({ authSecret: secret });
-      this.sharedSecret = secret;
-    } else {
-      this.sharedSecret = stored.authSecret;
-    }
+    // No initialization needed - using fixed shared secret from config
+    logger.debug('ExtensionAuthenticator initialized with fixed shared secret');
   }
 
   /**
    * Generate authentication headers for a request
    */
   static async generateAuthHeaders(): Promise<AuthHeaders> {
-    if (!this.sharedSecret) {
-      await this.initialize();
-    }
-
     const extensionId = chrome.runtime.id;
     const timestamp = Date.now().toString();
     
@@ -62,13 +49,10 @@ export class ExtensionAuthenticator {
 
   /**
    * Get the shared secret for Worker configuration
-   * This should only be displayed once during setup
+   * This returns the fixed shared secret from the config
    */
-  static async getSharedSecretForSetup(): Promise<string> {
-    if (!this.sharedSecret) {
-      await this.initialize();
-    }
-    return this.sharedSecret!;
+  static getSharedSecretForSetup(): string {
+    return this.sharedSecret;
   }
 
   /**
@@ -85,9 +69,13 @@ export class ExtensionAuthenticator {
 /**
  * Worker-side authentication verifier
  * This code should be used in the Cloudflare Worker
+ * 
+ * IMPORTANT: Set the FLUENT_SHARED_SECRET environment variable in your Cloudflare Worker to:
+ * fluent-extension-2024-shared-secret-key
  */
 export const workerAuthVerifier = `
 // Add this to your Cloudflare Worker
+// Set FLUENT_SHARED_SECRET environment variable to: fluent-extension-2024-shared-secret-key
 async function verifyAuthentication(request, env) {
   const extensionId = request.headers.get('X-Extension-Id');
   const timestamp = request.headers.get('X-Timestamp');

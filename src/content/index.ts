@@ -1,7 +1,9 @@
+
 // Fluent Content Script - Performance-first design
 // Target: <50ms processing time, <30MB memory usage
 
 import { logger } from '../lib/logger.js';
+import { API_CONFIG } from '../lib/constants.js';
 import type { UserSettings, LanguageCode } from '../types';
 import type { Tooltip } from './tooltip';
 import type { PageControl } from './PageControl';
@@ -50,6 +52,7 @@ interface SiteConfig {
     CONFIG: {} as ContentConfig,
     cleanup: () => {}
   };
+  
 
   // Initialize immediately for better performance
 
@@ -99,36 +102,118 @@ interface SiteConfig {
     }
   };
 
-  // Blocked patterns for sensitive sites
-  const BLOCKED_PATTERNS: RegExp[] = [
-    /\.gov$/,
-    /bank/i,
-    /health/i,
-    /medical/i,
-    /paypal/i,
-    /stripe/i
-  ];
+  // Site configuration cache
+  let siteConfig: any = null;
+  let configLoadTime = 0;
+  const CONFIG_CACHE_DURATION = 3600000; // 1 hour
+
+  // Fetch site configuration from worker
+  async function fetchSiteConfig(): Promise<any> {
+    const now = Date.now();
+    
+    // Use cached config if fresh
+    if (siteConfig && (now - configLoadTime) < CONFIG_CACHE_DURATION) {
+      return siteConfig;
+    }
+    
+    try {
+      const response = await fetch(`${API_CONFIG.TRANSLATOR_API}/site-config`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        siteConfig = await response.json();
+        configLoadTime = now;
+        logger.debug('Site config loaded:', siteConfig);
+        return siteConfig;
+      }
+    } catch (error) {
+      logger.error('Failed to fetch site config:', error);
+    }
+    
+    // Fallback to basic blocked patterns
+    return {
+      blockedSites: [
+        'gmail.com', 'mail.google.com', 'outlook.com', 
+        'paypal.com', 'chase.com', 'bankofamerica.com'
+      ],
+      optimizedSites: [],
+      globalSkipSelectors: ['script', 'style', 'pre', 'code']
+    };
+  }
 
   // Check if site should be processed
-  function shouldProcessSite(): boolean {
+  async function shouldProcessSite(): Promise<boolean> {
     const hostname = window.location.hostname;
-    return !BLOCKED_PATTERNS.some(pattern => pattern.test(hostname));
+    const config = await fetchSiteConfig();
+    
+    // Check if hostname or any parent domain is blocked
+    const isBlocked = config.blockedSites.some((blocked: string) => {
+      return hostname === blocked || 
+             hostname.endsWith('.' + blocked) ||
+             hostname.includes(blocked);
+    });
+    
+    if (isBlocked) {
+      logger.info(`Site ${hostname} is blocked by configuration`);
+    }
+    
+    return !isBlocked;
   }
 
   // Get site-specific configuration
-  function getSiteConfig(): SiteConfig {
+  async function getSiteConfig(): Promise<SiteConfig> {
     const hostname = window.location.hostname;
-    for (const [site, config] of Object.entries(SITE_CONFIGS)) {
+    const config = await fetchSiteConfig();
+    
+    // Check if this site has optimized settings
+    const optimized = config.optimizedSites?.find((site: any) => 
+      hostname.includes(site.domain)
+    );
+    
+    if (optimized) {
+      logger.debug(`Using optimized config for ${hostname}:`, optimized);
+      return {
+        contentSelector: optimized.selector || SITE_CONFIGS.default.contentSelector,
+        skipSelectors: [
+          ...(config.globalSkipSelectors || []),
+          ...(optimized.skipSelectors || [])
+        ],
+        useMutationObserver: optimized.useMutationObserver,
+        wordsPerPage: optimized.wordsPerPage
+      };
+    }
+    
+    // Check legacy SITE_CONFIGS
+    for (const [site, siteConfig] of Object.entries(SITE_CONFIGS)) {
       if (hostname.includes(site)) {
-        return config;
+        return {
+          ...siteConfig,
+          skipSelectors: [
+            ...(config.globalSkipSelectors || []),
+            ...(siteConfig.skipSelectors || [])
+          ]
+        };
       }
     }
-    return SITE_CONFIGS.default;
+    
+    // Default config with global skip selectors
+    return {
+      ...SITE_CONFIGS.default,
+      skipSelectors: [
+        ...(config.globalSkipSelectors || []),
+        ...SITE_CONFIGS.default.skipSelectors
+      ]
+    };
   }
 
   // Check if element should be skipped
-  function shouldSkipElement(element: Element | null): boolean {
-    const skipSelectors = getSiteConfig().skipSelectors || [];
+  async function shouldSkipElement(element: Element | null, config?: SiteConfig): Promise<boolean> {
+    const siteConfig = config || await getSiteConfig();
+    const skipSelectors = siteConfig.skipSelectors || [];
     if (!element || !element.parentElement) return true;
     
     // Check if element or any parent matches skip selectors
@@ -148,12 +233,12 @@ interface SiteConfig {
 
   // Main processing function
   async function processContent(): Promise<void> {
-    if (!shouldProcessSite()) {
-      logger.info('Site blocked by security policy');
+    if (!(await shouldProcessSite())) {
+      logger.info('Site blocked by configuration');
       return;
     }
 
-    const config = getSiteConfig();
+    const config = await getSiteConfig();
     
     // Import text processor for batched processing
     if (!textProcessorInstance) {
@@ -169,7 +254,8 @@ interface SiteConfig {
     // Collect text nodes using optimized processor
     const textNodes = textProcessorInstance.collectTextNodes(document.body, {
       ...config,
-      skipSelectors: [...(config.skipSelectors || []), 'script', 'style', 'noscript']
+      skipSelectors: [...(config.skipSelectors || []), 'script', 'style', 'noscript'],
+      shouldSkipElement: async (el: Element) => await shouldSkipElement(el, config)
     });
 
     // Process collected nodes
@@ -179,12 +265,10 @@ interface SiteConfig {
       // Import and use word replacer with real translations
       Promise.all([
         import('./replacer'),
-        import('../lib/simpleTranslator.js'),
         import('../lib/storage.js')
-      ]).then(async ([replacerModule, translatorModule, storageModule]) => {
+      ]).then(async ([replacerModule, storageModule]) => {
         try {
         const { WordReplacer } = replacerModule;
-        const { translator } = translatorModule;
         const { getStorage } = storageModule;
         
         replacerInstance = new WordReplacer(CONFIG);
@@ -197,6 +281,11 @@ interface SiteConfig {
         // Inject storage and language into replacer for spaced repetition
         replacerInstance.storage = storage;
         replacerInstance.currentLanguage = targetLanguage as LanguageCode;
+        
+        // Set custom word limit if specified in config
+        if (config.wordsPerPage) {
+          replacerInstance.config.MAX_WORDS_PER_PAGE = config.wordsPerPage;
+        }
         
         // Check if site is enabled
         const hostname = window.location.hostname;
@@ -220,38 +309,64 @@ interface SiteConfig {
           return;
         }
         
-        // Get translations with error handling
+        // Get translations through background script to avoid CORS
         let result;
         try {
-          result = await translator.translate(
-            wordsToReplace,
-            targetLanguage
-          );
+          result = await chrome.runtime.sendMessage({
+            type: 'GET_TRANSLATIONS',
+            words: wordsToReplace,
+            language: targetLanguage
+          });
         } catch (error) {
+          logger.error('Translation request failed:', error);
           logger.error('Translation failed', error);
           return;
         }
         
-        if (result.error) {
-          logger.warn(result.error);
+        // Check if response is wrapped in secure message
+        let actualResult = result;
+        if (result && result.type === 'response' && result.data) {
+          actualResult = result.data;
+        } else if (result && result.payload) {
+          actualResult = result.payload;
+        }
+        
+        if (actualResult.error) {
+          logger.warn(actualResult.error);
           // Show notification to user if daily limit reached
-          if (result.error.includes('daily limit') || result.error.includes('50 words')) {
+          if (actualResult.error.includes('daily limit') || actualResult.error.includes('50 words')) {
             showLimitNotification();
           }
         }
         
-        const translations = result.translations || {};
+        const translations = actualResult.translations || {};
         
-        // Create translation map for replacer
+        // Create translation map and context map for replacer
         const translationMap: Record<string, string> = {};
+        const contextMap: Record<string, any> = {};
+        
         for (const word of wordsToReplace) {
-          translationMap[word.toLowerCase()] = translations[word] || word;
+          const data = translations[word];
+          if (data && typeof data === 'object' && data.translation) {
+            // New format with context
+            translationMap[word.toLowerCase()] = data.translation;
+            contextMap[word.toLowerCase()] = {
+              pronunciation: data.pronunciation,
+              meaning: data.meaning,
+              example: data.example
+            };
+          } else if (data && typeof data === 'string') {
+            // Old format, just translation
+            translationMap[word.toLowerCase()] = data;
+          } else {
+            translationMap[word.toLowerCase()] = word;
+          }
         }
         
         // Replace words with error handling
         let replacedCount = 0;
         try {
-          replacedCount = await replacerInstance.replaceWords(textNodes, wordsToReplace, translationMap);
+          replacedCount = await replacerInstance.replaceWords(textNodes, wordsToReplace, translationMap, contextMap);
         } catch (error) {
           logger.error('Failed to replace words', error);
           return;
@@ -300,7 +415,58 @@ interface SiteConfig {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = chrome.runtime.getURL('content/styles.css');
-      document.head.appendChild(link);
+      
+      // Add error handling for CSS loading
+      link.onerror = () => {
+        logger.warn('Failed to load styles.css, injecting inline styles as fallback');
+        // Inject critical styles inline as fallback
+        const style = document.createElement('style');
+        style.textContent = `
+          .fluent-word {
+            background-color: rgba(255, 20, 147, 0.25) !important;
+            padding: 0.1em 0.2em !important;
+            margin: 0 0.1em !important;
+            border-radius: 3px !important;
+            cursor: help !important;
+            color: inherit !important;
+            text-decoration: none !important;
+            box-shadow: none !important;
+          }
+          .fluent-word:hover {
+            background-color: rgba(255, 20, 147, 0.4) !important;
+            box-shadow: none !important;
+            transform: scale(1.05) !important;
+          }
+          .fluent-tooltip {
+            position: absolute !important;
+            z-index: 2147483647 !important;
+            background: #1f2937 !important;
+            color: white !important;
+            padding: 16px 20px !important;
+            border-radius: 12px !important;
+            font-size: 14px !important;
+            min-width: 280px !important;
+            max-width: 360px !important;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+            left: var(--tooltip-left, 0) !important;
+            top: var(--tooltip-top, 0) !important;
+          }
+          .fluent-tooltip.visible {
+            opacity: 1 !important;
+          }
+          .fluent-hidden {
+            display: none !important;
+          }
+        `;
+        document.head.appendChild(style);
+      };
+      
+      link.onload = () => {
+      };
+      
+      if (document.head) {
+        document.head.appendChild(link);
+      }
       
       // Initialize storage with error handling
       let storage;
@@ -370,8 +536,8 @@ interface SiteConfig {
   }
 
   // Set up MutationObserver for SPAs with protection
-  const config = getSiteConfig();
-  if (config.useMutationObserver) {
+  getSiteConfig().then(config => {
+    if (config.useMutationObserver) {
     let mutationCount = 0;
     const MAX_MUTATIONS_PER_SECOND = 10;
     let lastMutationTime = Date.now();
@@ -406,7 +572,8 @@ interface SiteConfig {
       characterData: false,
       attributes: false
     });
-  }
+    }
+  });
 
   // Cleanup function for extension unload
   function cleanup(): void {
@@ -455,8 +622,15 @@ interface SiteConfig {
     }, 5000);
   }
   
-  // Cleanup on page unload
-  window.addEventListener('unload', cleanup);
+  // Cleanup when page is hidden (more reliable than deprecated 'unload')
+  window.addEventListener('pagehide', cleanup);
+  
+  // Also cleanup when document visibility changes to hidden
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && !chrome.runtime?.id) {
+      cleanup();
+    }
+  });
   
   // Update singleton with actual functions and mark as initialized
   window.__fluent = {
@@ -472,39 +646,53 @@ function showLimitNotification(): void {
   // Create notification element
   const notification = document.createElement('div');
   notification.className = 'fluent-limit-notification';
-  notification.innerHTML = `
-    <div style="
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: #3b82f6;
-      color: white;
-      padding: 16px 24px;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 14px;
-      line-height: 1.5;
-      max-width: 320px;
-      z-index: 10000;
-      animation: slideIn 0.3s ease-out;
-    ">
-      <strong>Daily limit reached\!</strong><br>
-      You've used your 50 free translations today. 
-      Add your own API key in settings for unlimited translations.
-      <button onclick="this.parentElement.parentElement.remove()" style="
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        background: none;
-        border: none;
-        color: white;
-        cursor: pointer;
-        font-size: 16px;
-        padding: 4px;
-      ">✕</button>
-    </div>
+  
+  // Create notification content safely
+  const notificationContent = document.createElement('div');
+  notificationContent.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #3b82f6;
+    color: white;
+    padding: 16px 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 320px;
+    z-index: 10000;
+    animation: slideIn 0.3s ease-out;
   `;
+  
+  const strong = document.createElement('strong');
+  strong.textContent = 'Daily limit reached!';
+  notificationContent.appendChild(strong);
+  
+  const br = document.createElement('br');
+  notificationContent.appendChild(br);
+  
+  const text = document.createTextNode('You\'ve used your 50 free translations today. Add your own API key in settings for unlimited translations.');
+  notificationContent.appendChild(text);
+  
+  const closeButton = document.createElement('button');
+  closeButton.style.cssText = `
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+  `;
+  closeButton.textContent = '✕';
+  closeButton.addEventListener('click', () => notification.remove());
+  notificationContent.appendChild(closeButton);
+  
+  notification.appendChild(notificationContent);
   
   // Add animation
   const style = document.createElement('style');
@@ -514,10 +702,14 @@ function showLimitNotification(): void {
       to { transform: translateX(0); opacity: 1; }
     }
   `;
-  document.head.appendChild(style);
+  if (document.head) {
+    document.head.appendChild(style);
+  }
   
   // Add to page
-  document.body.appendChild(notification);
+  if (document.body) {
+    document.body.appendChild(notification);
+  }
   
   // Auto-remove after 10 seconds
   setTimeout(() => {

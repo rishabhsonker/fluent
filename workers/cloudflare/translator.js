@@ -5,10 +5,10 @@
 
 // Constants
 const RATE_LIMITS = {
-  FREE_DAILY_WORDS: 50,
-  FREE_HOURLY_WORDS: 20,
-  AUTHENTICATED_DAILY_WORDS: 10000,
-  AUTHENTICATED_HOURLY_WORDS: 1000,
+  FREE_DAILY_WORDS: 50000,  // Increased from 50
+  FREE_HOURLY_WORDS: 10000,  // Increased from 20
+  AUTHENTICATED_DAILY_WORDS: 100000,
+  AUTHENTICATED_HOURLY_WORDS: 50000,
 };
 
 const COST_LIMITS = {
@@ -104,8 +104,8 @@ export default {
                            origin.length < 100;
     
     const corsHeaders = {
-      'Access-Control-Allow-Origin': isValidExtension ? origin : '',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Origin': isValidExtension ? origin : '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, X-Extension-Id, X-Timestamp, X-Auth-Token, X-Client-Id',
       'Access-Control-Max-Age': '86400',
       'Access-Control-Allow-Credentials': 'false',
@@ -119,16 +119,26 @@ export default {
         return new Response(null, { status: 204, headers: responseHeaders });
       }
 
-      // Only accept POST requests
+      const url = new URL(request.url);
+      const pathname = url.pathname;
+
+      // Special handling for /site-config endpoint (GET allowed)
+      if (pathname === '/site-config' && request.method === 'GET') {
+        // No authentication required for site config
+        const config = await getSiteConfig(env);
+        return new Response(JSON.stringify(config), {
+          status: 200,
+          headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Only accept POST requests for other endpoints
       if (request.method !== 'POST') {
         return new Response('Method not allowed', { 
           status: 405, 
           headers: responseHeaders 
         });
       }
-
-      const url = new URL(request.url);
-      const pathname = url.pathname;
 
       // Route: /translate
       if (pathname === '/translate') {
@@ -154,6 +164,32 @@ export default {
         
         return response;
       }
+
+      // Route: /context (get pronunciation and meaning from Claude)
+      if (pathname === '/context') {
+        // Verify authentication
+        const authResult = await verifyAuthentication(request, env);
+        if (authResult) {
+          return new Response(authResult.message, { 
+            status: authResult.status, 
+            headers: responseHeaders 
+          });
+        }
+
+        // Process context request
+        const response = await handleContext(request, env, ctx);
+        
+        // Add performance header
+        response.headers.set('X-Response-Time', `${Date.now() - startTime}ms`);
+        
+        // Add security headers
+        Object.entries(responseHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        
+        return response;
+      }
+
 
       // Route: /health (restricted to authenticated requests)
       if (pathname === '/health') {
@@ -246,6 +282,15 @@ async function verifyAuthentication(request, env) {
  * Handle translation requests with all security checks
  */
 async function handleTranslate(request, env, ctx) {
+  const startTime = Date.now(); // Track request processing time
+  
+  // Define clientId outside try block so it's accessible in catch
+  const clientId = request.headers.get('X-Client-Id') || 
+                  request.headers.get('CF-Connecting-IP') || 
+                  'anonymous';
+  
+  let validWords = []; // Define outside try block for error handling
+  
   try {
     // Parse and validate request body
     let body;
@@ -269,7 +314,7 @@ async function handleTranslate(request, env, ctx) {
     }
 
     // Validate each word
-    const validWords = words.filter(word => 
+    validWords = words.filter(word => 
       typeof word === 'string' && 
       word.length > 0 && 
       word.length < 100 &&
@@ -294,11 +339,6 @@ async function handleTranslate(request, env, ctx) {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
-    // Get client identifier
-    const clientId = request.headers.get('X-Client-Id') || 
-                    request.headers.get('CF-Connecting-IP') || 
-                    'anonymous';
 
     // Check rate limits
     const rateLimitResult = await checkRateLimit(clientId, validWords.length, !!apiKey, env);
@@ -432,6 +472,13 @@ async function handleTranslate(request, env, ctx) {
       environment: env.ENVIRONMENT
     });
 
+    // Log what we're returning
+    logInfo('Returning translations', {
+      translationCount: Object.keys(translations).length,
+      translations: translations,
+      wordsRequested: validWords.length
+    });
+    
     // Return response with metadata
     return new Response(JSON.stringify({ 
       translations,
@@ -615,6 +662,13 @@ async function updateCostTracking(characterCount, env) {
  * Call Microsoft Translator API with batch optimization
  */
 async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
+  logInfo('Calling Microsoft Translator API', {
+    wordCount: words.length,
+    targetLanguage: targetLanguage,
+    hasApiKey: !!apiKey,
+    region: env.AZURE_REGION || 'global'
+  });
+  
   const BATCH_SIZE = 25; // Microsoft Translator optimal batch size
   const endpoint = 'https://api.cognitive.microsofttranslator.com/translate';
   const params = new URLSearchParams({
@@ -695,6 +749,12 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
   }
 
   const result = await response.json();
+  logInfo('Microsoft Translator API response', {
+    responseLength: result.length,
+    firstItem: result[0],
+    targetLanguage: targetLanguage
+  });
+  
   const translations = {};
   
   for (let i = 0; i < words.length; i++) {
@@ -703,7 +763,441 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
     }
   }
   
+  logInfo('Parsed translations', {
+    translationCount: Object.keys(translations).length,
+    sample: Object.entries(translations).slice(0, 2)
+  });
+  
   return translations;
+}
+
+/**
+ * Handle context requests - get pronunciation and meaning from Claude
+ */
+async function handleContext(request, env, ctx) {
+  const startTime = Date.now();
+  
+  try {
+    // Parse request body
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { words, translations, targetLanguage } = body;
+
+    // Input validation
+    if (!words || !Array.isArray(words) || words.length === 0 || words.length > 10) {
+      return new Response(JSON.stringify({ error: 'Invalid words array (1-10 words required)' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!translations || typeof translations !== 'object') {
+      return new Response(JSON.stringify({ error: 'Invalid translations object' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Check if Claude API key is configured
+    if (!env.CLAUDE_API_KEY) {
+      logError('CLAUDE_API_KEY not configured', new Error('Missing configuration'));
+      return new Response(JSON.stringify({ 
+        error: 'Context service not configured',
+        message: 'Claude API key is missing from server configuration' 
+      }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Create a batch prompt for Claude
+    const prompt = `You are helping English speakers learn ${targetLanguage}. For each English word and its ${targetLanguage} translation below, provide:
+1. Easy-to-read pronunciation of the ${targetLanguage} word (like "doo-rah-DEH-roh" for Spanish "duradero")
+2. A simple, clear definition in English (one sentence)
+3. A practical example sentence IN ${targetLanguage.toUpperCase()} using the translated word
+
+Format your response as a JSON object with the English word as key and an object containing pronunciation (of the ${targetLanguage} word), meaning (in English), and example (in ${targetLanguage}).
+
+Words to analyze:
+${words.map(word => `"${word}" → "${translations[word] || word}"`).join('\n')}
+
+Example format:
+{
+  "durable": {
+    "pronunciation": "doo-rah-DEH-roh",
+    "meaning": "Able to withstand wear, pressure, or damage",
+    "example": "Esta mochila es muy duradera y debería durar muchos años."
+  }
+}
+
+Respond with valid JSON only, no markdown or additional text.`;
+
+    // Call Claude API
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': env.CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!claudeResponse.ok) {
+      const errorText = await claudeResponse.text();
+      logError('Claude API error', new Error(`API returned ${claudeResponse.status}: ${errorText}`), {
+        status: claudeResponse.status,
+        wordCount: words.length
+      });
+      throw new Error(`Claude API error: ${claudeResponse.status}`);
+    }
+
+    const claudeData = await claudeResponse.json();
+    
+    // Parse Claude's response
+    let contextData;
+    try {
+      // Claude returns the content in the first message
+      const content = claudeData.content[0].text;
+      contextData = JSON.parse(content);
+    } catch (error) {
+      logError('Failed to parse Claude response', error, {
+        response: claudeData
+      });
+      // Fallback response
+      contextData = {};
+      for (const word of words) {
+        contextData[word] = {
+          pronunciation: word.toLowerCase(),
+          meaning: `The word "${word}" translated to ${targetLanguage}`,
+          example: `This is an example with ${word}.`
+        };
+      }
+    }
+
+    // Cache the context data
+    const cachePromises = [];
+    for (const [word, data] of Object.entries(contextData)) {
+      const cacheKey = `context:${targetLanguage}:${word.toLowerCase()}`;
+      cachePromises.push(
+        env.TRANSLATION_CACHE.put(
+          cacheKey,
+          JSON.stringify(data),
+          { expirationTtl: CACHE_TTL.TRANSLATION }
+        )
+      );
+    }
+    
+    ctx.waitUntil(Promise.all(cachePromises));
+
+    logInfo('Context request completed', {
+      wordCount: words.length,
+      targetLanguage,
+      processingTimeMs: Date.now() - startTime
+    });
+
+    return new Response(JSON.stringify({ 
+      contexts: contextData,
+      metadata: {
+        wordsProcessed: words.length,
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    logError('Context handler error', error);
+    return new Response(JSON.stringify({ 
+      error: 'Context service error',
+      message: 'Unable to generate word contexts at this time'
+    }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+/**
+ * Get site-specific configuration
+ */
+async function getSiteConfig(env) {
+  // Default configuration
+  const defaultConfig = {
+    blockedSites: [
+      // Email and productivity
+      'gmail.com',
+      'mail.google.com',
+      'outlook.com',
+      'outlook.live.com',
+      'mail.yahoo.com',
+      'superhuman.com',
+      'hey.com',
+      'protonmail.com',
+      'mail.proton.me',
+      
+      // Banking and financial
+      'chase.com',
+      'wellsfargo.com',
+      'bankofamerica.com',
+      'citi.com',
+      'usbank.com',
+      'paypal.com',
+      'venmo.com',
+      'cashapp.com',
+      'coinbase.com',
+      'binance.com',
+      'stripe.com',
+      'square.com',
+      
+      // Healthcare
+      'mychart.com',
+      'kaiserpermanente.org',
+      'anthem.com',
+      'cigna.com',
+      'uhc.com',
+      
+      // Government
+      'irs.gov',
+      'dmv.gov',
+      'uscis.gov',
+      'state.gov',
+      
+      // Developer tools
+      'github.com',
+      'gitlab.com',
+      'bitbucket.org',
+      'localhost',
+      '127.0.0.1',
+      '0.0.0.0',
+      
+      // Password managers
+      '1password.com',
+      'bitwarden.com',
+      'lastpass.com',
+      'dashlane.com',
+      
+      // Work/productivity tools
+      'slack.com',
+      'discord.com',
+      'teams.microsoft.com',
+      'zoom.us',
+      'meet.google.com',
+      'notion.so',
+      'monday.com',
+      'asana.com',
+      'trello.com',
+      'jira.atlassian.com',
+      'confluence.atlassian.com',
+      
+      // Sensitive sites
+      'facebook.com',
+      'instagram.com',
+      'twitter.com',
+      'x.com',
+      'linkedin.com',
+      'tinder.com',
+      'bumble.com',
+      'hinge.co'
+    ],
+    
+    optimizedSites: [
+      // News sites
+      {
+        domain: 'bbc.com',
+        selector: '.ssrcss-1if1lbl-StyledText p, .ssrcss-18cjaf3-StyledText p',
+        wordsPerPage: 10
+      },
+      {
+        domain: 'cnn.com',
+        selector: '.paragraph__inline, .zn-body__paragraph',
+        wordsPerPage: 8
+      },
+      {
+        domain: 'nytimes.com',
+        selector: '.css-at9mc1 p, .css-53u6y8 p',
+        wordsPerPage: 10
+      },
+      {
+        domain: 'theguardian.com',
+        selector: '.dcr-1kas69x p, .article-body-commercial-selector p',
+        wordsPerPage: 10
+      },
+      {
+        domain: 'reuters.com',
+        selector: '.StandardArticleBody_body p',
+        wordsPerPage: 8
+      },
+      
+      // Educational sites
+      {
+        domain: 'wikipedia.org',
+        selector: '#mw-content-text p',
+        wordsPerPage: 12,
+        skipSelectors: ['.mw-editsection', '.reference', '.citation']
+      },
+      {
+        domain: 'medium.com',
+        selector: 'article p',
+        wordsPerPage: 10,
+        skipSelectors: ['pre', 'code']
+      },
+      {
+        domain: 'quora.com',
+        selector: '.q-text p, .qu-userSelect--text',
+        wordsPerPage: 8
+      },
+      
+      // Forums and discussion
+      {
+        domain: 'reddit.com',
+        selector: '[data-testid="comment"] p, .Post h3, ._eYtD2XCVieq6emjKBH3m',
+        wordsPerPage: 6,
+        useMutationObserver: true
+      },
+      {
+        domain: 'hackernews.com',
+        selector: '.comment',
+        wordsPerPage: 6
+      },
+      {
+        domain: 'stackoverflow.com',
+        selector: '.s-prose p, .question-hyperlink',
+        wordsPerPage: 6,
+        skipSelectors: ['pre', 'code']
+      },
+      
+      // Blogs and articles
+      {
+        domain: 'substack.com',
+        selector: '.markup p',
+        wordsPerPage: 10
+      },
+      {
+        domain: 'wordpress.com',
+        selector: '.entry-content p, .post-content p',
+        wordsPerPage: 8
+      },
+      {
+        domain: 'blogger.com',
+        selector: '.post-body p',
+        wordsPerPage: 8
+      },
+      
+      // E-commerce (product descriptions)
+      {
+        domain: 'amazon.com',
+        selector: '.a-size-base-plus, .a-size-medium, .a-text-normal',
+        wordsPerPage: 4,
+        skipSelectors: ['.a-price', '.a-button']
+      },
+      {
+        domain: 'ebay.com',
+        selector: '.it-ttl, .vi-is1-t',
+        wordsPerPage: 4
+      },
+      
+      // Recipe sites
+      {
+        domain: 'allrecipes.com',
+        selector: '.recipe-content p, .direction-text',
+        wordsPerPage: 6
+      },
+      {
+        domain: 'foodnetwork.com',
+        selector: '.o-RecipeInfo__m-Description p, .o-Method__m-Step',
+        wordsPerPage: 6
+      },
+      
+      // Travel sites
+      {
+        domain: 'tripadvisor.com',
+        selector: '.QewHA p, .pIRBV',
+        wordsPerPage: 6
+      },
+      {
+        domain: 'booking.com',
+        selector: '.hp__hotel-description p, .review_item_body',
+        wordsPerPage: 6
+      },
+      
+      // Language learning friendly
+      {
+        domain: 'duolingo.com',
+        selector: 'none', // Don't interfere with language learning
+        wordsPerPage: 0
+      },
+      {
+        domain: 'memrise.com',
+        selector: 'none',
+        wordsPerPage: 0
+      }
+    ],
+    
+    // Global patterns to always skip
+    globalSkipSelectors: [
+      'script',
+      'style',
+      'noscript',
+      'iframe',
+      'object',
+      'embed',
+      'pre',
+      'code',
+      'input',
+      'textarea',
+      'select',
+      'button',
+      '.CodeMirror',
+      '.ace_editor',
+      '.monaco-editor',
+      '[contenteditable="true"]',
+      '[role="textbox"]',
+      '.math',
+      '.katex',
+      '.MathJax'
+    ],
+    
+    // Configuration metadata
+    version: '1.0.0',
+    lastUpdated: new Date().toISOString()
+  };
+
+  // Try to get custom configuration from KV if available
+  try {
+    const customConfig = await env.TRANSLATION_CACHE.get('site-config', { type: 'json' });
+    if (customConfig) {
+      // Merge custom config with defaults
+      return {
+        ...defaultConfig,
+        ...customConfig,
+        blockedSites: [...new Set([...defaultConfig.blockedSites, ...(customConfig.blockedSites || [])])],
+        optimizedSites: [...defaultConfig.optimizedSites, ...(customConfig.optimizedSites || [])]
+      };
+    }
+  } catch (error) {
+    logError('Failed to load custom site config', error);
+  }
+
+  return defaultConfig;
 }
 
 /**
@@ -722,6 +1216,7 @@ async function getHealthStatus(env) {
     environment: {
       hasTranslatorKey: !!env.MICROSOFT_TRANSLATOR_KEY,
       hasSharedSecret: !!env.FLUENT_SHARED_SECRET,
+      hasClaudeKey: !!env.CLAUDE_API_KEY,
     },
   };
 }

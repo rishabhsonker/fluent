@@ -53,12 +53,16 @@ export class Validator {
     // Remove any HTML tags
     const textOnly = text.replace(/<[^>]*>/g, '');
     
-    // Escape HTML entities
-    const div = document.createElement('div');
-    div.textContent = textOnly;
+    // Escape HTML entities without using document (for service worker compatibility)
+    const sanitized = textOnly
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
+      .replace(/\//g, '&#x2F;');
     
     // Limit length
-    const sanitized = div.innerHTML;
     return sanitized.length > 1000 ? sanitized.substring(0, 1000) + '...' : sanitized;
   }
 

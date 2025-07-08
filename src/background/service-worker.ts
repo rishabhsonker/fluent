@@ -102,18 +102,31 @@ async function loadSettings(): Promise<void> {
 
 // Secure message handling
 chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
+  // DEBUG: Log all incoming messages
+  console.log('[Fluent Background] Received message:', request.type, request);
+  logger.debug('Received message:', request.type);
+  
   // Handle async responses
   (async () => {
     try {
       // Validate message security
+      console.log('[Fluent Background] Validating message...');
+      logger.debug('Validating message...');
       securityManager.validateMessage(request, sender);
       
+      console.log('[Fluent Background] Handling message...');
+      logger.debug('Handling message...');
       const response = await handleMessage(request, sender);
+      console.log('[Fluent Background] Response from handler:', response);
       
+      logger.debug('Creating secure response...');
       // Create secure response
       const secureResponse = await securityManager.createSecureMessage('response', response);
+      console.log('[Fluent Background] Sending secure response:', secureResponse);
       sendResponse(secureResponse);
     } catch (error) {
+      console.error('[Fluent Service Worker] Message handler error:', error);
+      console.error('[Fluent Service Worker] Error stack:', error instanceof Error ? error.stack : 'No stack');
       logger.error('Message handler error', error);
       sendResponse({ error: error instanceof Error ? error.message : 'Unknown error', secure: false });
     }
@@ -231,8 +244,11 @@ async function updateSiteSettings(hostname: string, settings: Partial<SiteSettin
   return { success: true };
 }
 
-// Get translations (with caching)
+// Get translations (with caching and API calls)
 async function getTranslations(words: string[], language: string): Promise<any> {
+  // Dynamically import the translator module
+  const { translator } = await import('../lib/simpleTranslator');
+  
   // Validate inputs
   const validLanguage = validator.validateLanguage(language);
   const validWords = validator.validateWordList(words);
@@ -241,45 +257,23 @@ async function getTranslations(words: string[], language: string): Promise<any> 
     return { translations: {}, error: 'No valid words to translate' };
   }
   
-  const translations: Record<string, string> = {};
-  const wordsToTranslate: string[] = [];
-  
-  // Check cache first
-  for (const word of validWords) {
-    const cacheKey = `${validLanguage}:${word.toLowerCase()}`;
-    const cached = state.translationCache.get(cacheKey);
+  try {
+    // Use the translator service which handles caching internally
+    const result = await translator.translate(validWords, validLanguage as LanguageCode);
     
-    if (cached) {
-      translations[word] = cached;
-      state.cacheStats.hits++;
-    } else {
-      wordsToTranslate.push(word);
-      state.cacheStats.misses++;
-    }
-  }
-  
-  // Return empty translations if we have words to translate (API will be called from content script)
-  if (wordsToTranslate.length > 0) {
-    // In production, translations are fetched via the translation service
-    // This is just a cache lookup - actual translations happen elsewhere
+    // Update our background script cache stats
+    const cacheInfo = translator.getStats();
+    state.cacheStats.hits += cacheInfo.hits;
+    state.cacheStats.misses += cacheInfo.misses;
+    
+    return result;
+  } catch (error) {
+    logger.error('Translation error:', error);
     return { 
-      translations, 
-      fromCache: false,
-      error: 'Translations should be fetched from translation service'
+      translations: {}, 
+      error: error instanceof Error ? error.message : 'Translation failed'
     };
   }
-  
-  // Implement cache size limit
-  if (state.translationCache.size > 10000) {
-    // Remove oldest entries (simple FIFO for now)
-    const entriesToRemove = state.translationCache.size - 8000;
-    const keys = Array.from(state.translationCache.keys());
-    for (let i = 0; i < entriesToRemove; i++) {
-      state.translationCache.delete(keys[i]);
-    }
-  }
-  
-  return { translations, fromCache: wordsToTranslate.length === 0 };
 }
 
 // Log performance metrics
@@ -348,6 +342,9 @@ async function cleanupOldStats(): Promise<void> {
     await chrome.storage.local.remove(keysToRemove);
   }
 }
+
+// DEBUG: Log when service worker starts
+logger.info('Service Worker starting...');
 
 // Handle extension icon click
 chrome.action.onClicked.addListener(async (tab: chrome.tabs.Tab) => {

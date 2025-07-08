@@ -1,30 +1,53 @@
 /* Fluent Extension Styles - Minimal and performant */
 
-/* Replaced word styling */
-.fluent-word {
-  color: #9F2B68 !important; /* Deep magenta for replaced words */
-  text-decoration: underline !important;
-  text-decoration-color: #BF40BF !important; /* Bright purple underline */
-  text-decoration-style: dotted !important;
-  text-decoration-thickness: 1.5px !important;
-  text-underline-offset: 2px !important;
+/* Replaced word styling - Highlighter effect */
+span.fluent-word,
+.fluent-word,
+body .fluent-word,
+body span.fluent-word,
+div span.fluent-word,
+p span.fluent-word,
+* .fluent-word {
+  /* Keep original text color for readability */
+  color: inherit !important;
+  /* Soft highlighter effect with reduced opacity */
+  background-color: rgba(255, 20, 147, 0.25) !important; /* Neon pink highlighter with 25% opacity */
+  background: rgba(255, 20, 147, 0.25) !important; /* Double declaration for specificity */
+  /* Add padding for better highlight appearance */
+  padding: 0.1em 0.2em !important;
+  margin: 0 0.1em !important;
+  /* Rounded corners for modern look */
+  border-radius: 3px !important;
+  /* Remove underline - let highlight do the work */
+  text-decoration: none !important;
+  /* Smooth transitions */
+  transition: all 0.2s ease !important;
   cursor: help !important;
-  transition: all 0.2s ease;
-  position: relative;
-  display: inline;
-  background: transparent !important;
+  position: relative !important;
+  display: inline !important;
+  /* No shadow for cleaner look */
+  box-shadow: none !important;
+  /* Ensure it's visible */
+  opacity: 1 !important;
   border: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
   font: inherit !important;
   line-height: inherit !important;
 }
 
 /* Hover effect */
-.fluent-word:hover {
-  color: #7D1F52 !important; /* Darker magenta on hover */
-  text-decoration-style: solid !important;
-  text-decoration-thickness: 2px !important;
+span.fluent-word:hover,
+.fluent-word:hover,
+body .fluent-word:hover,
+body span.fluent-word:hover,
+* .fluent-word:hover {
+  /* Intensify highlight on hover */
+  background-color: rgba(255, 20, 147, 0.4) !important; /* Stronger pink on hover with 40% opacity */
+  /* No shadow */
+  box-shadow: none !important;
+  /* Slight scale for feedback */
+  transform: scale(1.05) !important;
+  /* Keep text readable */
+  color: inherit !important;
 }
 
 /* Focus state for accessibility */
@@ -40,13 +63,14 @@
   z-index: 2147483647; /* Maximum z-index */
   background: #1f2937;
   color: white;
-  padding: 12px 16px;
-  border-radius: 8px;
+  padding: 16px 20px;
+  border-radius: 12px;
   font-size: 14px;
   line-height: 1.5;
-  max-width: 300px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 
-              0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  min-width: 280px;
+  max-width: 360px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 
+              0 10px 10px -5px rgba(0, 0, 0, 0.04);
   pointer-events: none;
   opacity: 0;
   transform: translateY(4px);
@@ -63,54 +87,100 @@
   transform: translateY(0);
 }
 
-/* Tooltip arrow */
-.fluent-tooltip::before {
+/* Tooltip arrow - default position (above word) */
+.fluent-tooltip.top::before,
+.fluent-tooltip:not(.bottom)::before {
   content: '';
   position: absolute;
   bottom: -6px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) rotate(45deg);
   width: 12px;
   height: 12px;
   background: #1f2937;
+  z-index: -1;
+}
+
+/* Tooltip arrow - bottom position (below word) */
+.fluent-tooltip.bottom::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
   transform: translateX(-50%) rotate(45deg);
+  width: 12px;
+  height: 12px;
+  background: #1f2937;
   z-index: -1;
 }
 
 /* Tooltip content sections */
 .fluent-tooltip-header {
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .fluent-tooltip-translation {
-  font-size: 16px;
+  font-size: 20px;
   color: #60a5fa;
-  margin-bottom: 8px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-align: center;
 }
 
-.fluent-tooltip-original {
-  font-size: 12px;
+.fluent-tooltip-pronunciation {
+  font-size: 13px;
   color: #9ca3af;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+  text-align: center;
+  font-style: normal;
+}
+
+.fluent-tooltip-word-mapping {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 12px;
+  text-align: center;
+  font-style: italic;
+}
+
+.fluent-tooltip-meaning {
+  font-size: 14px;
+  color: #e5e7eb;
+  margin-bottom: 10px;
+  line-height: 1.5;
+  padding: 8px;
+  background: rgba(55, 65, 81, 0.5);
+  border-radius: 6px;
+}
+
+.fluent-tooltip-example {
+  font-size: 13px;
+  color: #93c5fd;
+  margin-bottom: 10px;
+  font-style: normal;
+  line-height: 1.5;
+  padding: 8px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 6px;
+  border-left: 3px solid #3b82f6;
 }
 
 /* Progress bar for word mastery */
 .fluent-tooltip-progress {
-  margin: 8px 0;
+  margin-top: 12px;
   display: none;
 }
 
 .fluent-tooltip-progress-bar {
   width: 100%;
-  height: 6px;
+  height: 4px;
   background: #374151;
-  border-radius: 3px;
+  border-radius: 2px;
   overflow: hidden;
-  margin-bottom: 4px;
 }
 
 .fluent-tooltip-progress-fill {
@@ -122,36 +192,38 @@
 }
 
 .fluent-tooltip-progress-text {
-  font-size: 11px;
-  color: #9ca3af;
-  text-align: center;
-  display: block;
+  display: none;
 }
 
 .fluent-tooltip-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
+  justify-content: center;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid #374151;
 }
 
-/* Tooltip action buttons */
+/* Tooltip action button */
 .fluent-tooltip-btn {
-  background: #374151;
+  background: #3b82f6;
   border: none;
   color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 6px 12px;
+  border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
   font-family: inherit;
   pointer-events: auto;
 }
 
 .fluent-tooltip-btn:hover {
-  background: #4b5563;
+  background: #2563eb;
+  transform: scale(1.05);
+}
+
+.fluent-tooltip-btn:active {
+  transform: scale(0.95);
 }
 
 /* Context panel */
@@ -210,8 +282,6 @@
 /* Page control widget */
 .fluent-control {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
   z-index: 2147483646;
   display: flex;
   align-items: center;
@@ -235,6 +305,19 @@
   position: relative;
 }
 
+/* Small button style */
+.fluent-control-button-small {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+}
+
+.fluent-control-icon {
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+}
+
 .fluent-control-button:hover {
   transform: scale(1.05);
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 
@@ -249,7 +332,7 @@
 /* Control menu */
 .fluent-control-menu {
   position: absolute;
-  bottom: 70px;
+  bottom: 50px;
   right: 0;
   background: white;
   border-radius: 12px;
@@ -269,6 +352,7 @@
   transform: translateY(0) scale(1);
   pointer-events: auto;
 }
+
 
 .fluent-control-menu-section {
   margin-bottom: 8px;

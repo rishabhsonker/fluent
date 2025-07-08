@@ -478,8 +478,8 @@ export const storage = {
   }
 };
 
-// Auto-cleanup on install/update
-if (chrome.runtime) {
+// Auto-cleanup on install/update (only in service worker context)
+if (chrome?.runtime?.onInstalled?.addListener) {
   chrome.runtime.onInstalled.addListener(() => {
     const storage = getStorage();
     storage.cleanup();

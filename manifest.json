@@ -18,7 +18,7 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "css": ["content.css"],
-      "run_at": "document_idle",
+      "run_at": "document_start",
       "all_frames": false
     }
   ],
@@ -36,12 +36,12 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "content.css", "data/*"],
+      "resources": ["icons/*", "content.css", "content/styles.css", "data/*"],
       "matches": ["<all_urls>"]
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://fluent-translator.workers.dev https://api.cognitive.microsofttranslator.com; font-src 'self'; frame-src 'none'; media-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none';"
+    "extension_pages": "script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://fluent-translator.workers.dev https://fluent-translator.hq.workers.dev https://api.cognitive.microsofttranslator.com; font-src 'self'; frame-src 'none'; media-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none';"
   },
   "minimum_chrome_version": "88"
 }

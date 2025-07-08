@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --mode development",
-    "build": "vite build --mode production",
+    "build": "vite build --mode production && vite build -c vite.content.config.ts && vite build -c vite.background.config.ts",
     "build:prod": "vite build --mode production",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
@@ -37,6 +37,7 @@
     "wrangler": "^4.23.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.56.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   }

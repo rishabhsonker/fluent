@@ -69,3 +69,8 @@ playwright/.cache/
 # Editor specific
 *.sublime-workspace
 *.sublime-project
+
+# Cloudflare Workers
+.wrangler/
+workers/cloudflare/.wrangler/
+wrangler.log

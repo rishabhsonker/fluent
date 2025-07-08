@@ -75,6 +75,11 @@ export interface ReplacementData {
   length: number;
   original: string;
   translation: string;
+  context?: {
+    pronunciation?: string;
+    meaning?: string;
+    example?: string;
+  };
 }
 
 export interface ProcessingContext {

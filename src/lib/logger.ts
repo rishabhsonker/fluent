@@ -28,8 +28,8 @@ class Logger {
   private readonly maxHistorySize: number;
 
   constructor() {
-    // Production build - always silent except for critical errors
-    this.isDevelopment = false;
+    // TEMPORARILY SET TO DEVELOPMENT FOR DEBUGGING
+    this.isDevelopment = true;
     
     // Log levels
     this.levels = {
@@ -39,8 +39,8 @@ class Logger {
       DEBUG: 3
     };
     
-    // In production, only log errors to avoid any console output
-    this.currentLevel = this.levels.ERROR;
+    // TEMPORARILY SET TO DEBUG LEVEL
+    this.currentLevel = this.levels.DEBUG;
     
     // Log history for debugging (limited size)
     this.history = [];
@@ -139,18 +139,19 @@ class Logger {
 // Export singleton instance
 export const logger = new Logger();
 
+// TEMPORARILY DISABLED FOR DEBUGGING
 // For production: Override console methods to prevent any accidental logging
-(() => {
-  const noop = (): void => {};
-  // Keep error and warn for critical issues only
-  console.log = noop;
-  console.info = noop;
-  console.debug = noop;
-  console.trace = noop;
-  console.time = noop;
-  console.timeEnd = noop;
-  console.timeLog = noop;
-  console.group = noop;
-  console.groupEnd = noop;
-  console.groupCollapsed = noop;
-})();
+// (() => {
+//   const noop = (): void => {};
+//   // Keep error and warn for critical issues only
+//   console.log = noop;
+//   console.info = noop;
+//   console.debug = noop;
+//   console.trace = noop;
+//   console.time = noop;
+//   console.timeEnd = noop;
+//   console.timeLog = noop;
+//   console.group = noop;
+//   console.groupEnd = noop;
+//   console.groupCollapsed = noop;
+// })();

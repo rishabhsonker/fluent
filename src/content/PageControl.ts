@@ -20,6 +20,10 @@ export class PageControl {
   private isPaused: boolean = false;
   private element: HTMLDivElement | null = null;
   private menuElement: HTMLDivElement | null = null;
+  
+  // Store event handlers for cleanup
+  private documentClickHandler: ((e: Event) => void) | null = null;
+  private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(settings: PageControlSettings) {
     this.settings = settings;
@@ -30,11 +34,19 @@ export class PageControl {
     // Create main button
     this.element = document.createElement('div');
     this.element.className = 'fluent-control';
-    this.element.innerHTML = `
-      <button class="fluent-control-button" aria-label="Fluent language settings">
-        <span class="fluent-control-flag">${this.getLanguageFlag()}</span>
-      </button>
-    `;
+    // Create button safely
+    const button = document.createElement('button');
+    button.className = 'fluent-control-button fluent-control-button-small';
+    button.setAttribute('aria-label', 'Fluent language settings');
+    
+    // Use extension icon instead of flag
+    const iconImg = document.createElement('img');
+    iconImg.className = 'fluent-control-icon';
+    iconImg.src = chrome.runtime.getURL('icons/icon-48.png');
+    iconImg.alt = 'Fluent';
+    
+    button.appendChild(iconImg);
+    this.element.appendChild(button);
 
     // Create menu
     this.menuElement = document.createElement('div');
@@ -98,14 +110,6 @@ export class PageControl {
         </div>
       </div>
       
-      <div class="fluent-control-menu-divider"></div>
-      
-      <div class="fluent-control-menu-section">
-        <div class="fluent-control-menu-item" data-action="settings">
-          <span>⚙️</span>
-          <span>Settings</span>
-        </div>
-      </div>
     `;
   }
 
@@ -113,8 +117,8 @@ export class PageControl {
     if (!this.element || !this.menuElement) return;
 
     // Toggle menu
-    const button = this.element.querySelector('.fluent-control-button') as HTMLButtonElement;
-    if (button) {
+    const button = this.element.querySelector('.fluent-control-button');
+    if (button instanceof HTMLButtonElement) {
       button.addEventListener('click', (e: Event) => {
         e.stopPropagation();
         this.toggleMenu();
@@ -124,9 +128,9 @@ export class PageControl {
     // Language selection and menu actions
     this.menuElement.addEventListener('click', (e: Event) => {
       const target = e.target as HTMLElement;
-      const langBtn = target.closest('.fluent-control-lang-btn') as HTMLButtonElement;
+      const langBtn = target.closest('.fluent-control-lang-btn');
       
-      if (langBtn) {
+      if (langBtn instanceof HTMLElement) {
         const lang = langBtn.dataset.lang as LanguageCode;
         if (lang) {
           this.changeLanguage(lang);
@@ -134,8 +138,8 @@ export class PageControl {
         }
       }
 
-      const menuItem = target.closest('.fluent-control-menu-item') as HTMLElement;
-      if (menuItem) {
+      const menuItem = target.closest('.fluent-control-menu-item');
+      if (menuItem instanceof HTMLElement) {
         const action = menuItem.dataset.action;
         if (action) {
           this.handleAction(action);
@@ -144,18 +148,24 @@ export class PageControl {
     });
 
     // Close menu on outside click
-    document.addEventListener('click', (e: Event) => {
-      if (this.element && !this.element.contains(e.target as Node)) {
+    this.documentClickHandler = (e: Event) => {
+      // Add safety checks for element existence and DOM connectivity
+      if (this.element && 
+          e.target && 
+          document.body.contains(this.element) && 
+          !this.element.contains(e.target as Node)) {
         this.closeMenu();
       }
-    });
+    };
+    document.addEventListener('click', this.documentClickHandler);
 
     // Escape key
-    document.addEventListener('keydown', (e: KeyboardEvent) => {
+    this.keydownHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && this.isExpanded) {
         this.closeMenu();
       }
-    });
+    };
+    document.addEventListener('keydown', this.keydownHandler);
   }
 
   private toggleMenu(): void {
@@ -236,12 +246,6 @@ export class PageControl {
           
         case 'disable-site':
           await this.disableSite();
-          break;
-          
-        case 'settings':
-          // Open extension popup
-          const message: MessageRequest = { type: 'OPEN_POPUP' };
-          chrome.runtime.sendMessage(message);
           break;
       }
       
@@ -338,8 +342,8 @@ export class PageControl {
     if (!this.element) return;
 
     // Smart positioning to avoid overlapping content
-    const button = this.element.querySelector('.fluent-control-button') as HTMLButtonElement;
-    if (!button) return;
+    const button = this.element.querySelector('.fluent-control-button');
+    if (!button || !(button instanceof HTMLElement)) return;
 
     const rect = button.getBoundingClientRect();
     
@@ -357,9 +361,23 @@ export class PageControl {
   }
 
   public destroy(): void {
+    // Remove event listeners
+    if (this.documentClickHandler) {
+      document.removeEventListener('click', this.documentClickHandler);
+      this.documentClickHandler = null;
+    }
+    
+    if (this.keydownHandler) {
+      document.removeEventListener('keydown', this.keydownHandler);
+      this.keydownHandler = null;
+    }
+    
+    // Remove element from DOM
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
+    
+    // Clear references
     this.element = null;
     this.menuElement = null;
   }

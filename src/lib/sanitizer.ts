@@ -104,7 +104,8 @@ export function setSafeAttribute(element: Element, name: string, value: string):
   // Whitelist of safe attributes
   const safeAttributes = [
     'class', 'id', 'data-fluent-word', 'data-fluent-translation',
-    'data-fluent-language', 'data-fluent-original', 'title',
+    'data-fluent-language', 'data-fluent-original', 'data-fluent-pronunciation',
+    'data-fluent-meaning', 'data-fluent-example', 'title',
     'aria-label', 'aria-describedby', 'role', 'tabindex'
   ];
   
