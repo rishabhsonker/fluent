@@ -282,7 +282,7 @@ export class Tooltip {
     if (translationElement) translationElement.textContent = translation;
     
     // 2. Show pronunciation of translated word (smaller font)
-    if (pronunciationElement) {
+    if (pronunciationElement instanceof HTMLElement) {
       if (pronunciation) {
         pronunciationElement.textContent = pronunciation;
         pronunciationElement.style.display = 'block';
@@ -292,13 +292,13 @@ export class Tooltip {
     }
     
     // 2.5. Show word mapping
-    if (wordMappingElement) {
+    if (wordMappingElement instanceof HTMLElement) {
       wordMappingElement.textContent = `${translation} = ${original}`;
       wordMappingElement.style.display = 'block';
     }
     
     // 3. Show meaning in English
-    if (meaningElement) {
+    if (meaningElement instanceof HTMLElement) {
       if (meaning) {
         meaningElement.textContent = meaning;
         meaningElement.style.display = 'block';
@@ -309,7 +309,7 @@ export class Tooltip {
     }
     
     // 4. Show contextual example in target language
-    if (exampleElement) {
+    if (exampleElement instanceof HTMLElement) {
       if (example) {
         exampleElement.textContent = example;
         exampleElement.style.display = 'block';
@@ -426,8 +426,6 @@ export class Tooltip {
 
     const targetRect = this.currentTarget.getBoundingClientRect();
     const tooltipRect = this.element.getBoundingClientRect();
-    console.log('[Fluent] Target rect:', targetRect);
-    console.log('[Fluent] Tooltip rect:', tooltipRect);
     
     const viewport = {
       width: window.innerWidth,
@@ -490,7 +488,6 @@ export class Tooltip {
     this.element.style.setProperty('--tooltip-left', `${left}px`);
     this.element.style.setProperty('--tooltip-top', `${top}px`);
     
-    console.log('[Fluent] Final tooltip position:', { left, top, above: tooltipAbove });
   }
 
   private async playPronunciation(): Promise<void> {

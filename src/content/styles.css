@@ -281,11 +281,12 @@ body span.fluent-word:hover,
 
 /* Page control widget */
 .fluent-control {
-  position: fixed;
+  position: fixed !important;
   z-index: 2147483646;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: move;
 }
 
 .fluent-control-button {

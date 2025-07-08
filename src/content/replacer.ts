@@ -48,6 +48,11 @@ export class WordReplacer {
     this.currentLanguage = null;
   }
 
+  // Allow updating max words per page
+  setMaxWordsPerPage(count: number): void {
+    this.config.MAX_WORDS_PER_PAGE = count;
+  }
+
   // Analyze text and find suitable words for replacement
   async analyzeText(textNodes: Text[]): Promise<string[]> {
     const startTime = performance.now();
@@ -340,14 +345,6 @@ export class WordReplacer {
     // Safe text content, no HTML injection
     span.textContent = translation;
     
-    // Debug: log element creation
-    console.log('[Fluent] Created element:', {
-      original,
-      translation,
-      context,
-      className: span.className,
-      textContent: span.textContent
-    });
     
     return span;
   }

@@ -39,8 +39,8 @@ class Logger {
       DEBUG: 3
     };
     
-    // TEMPORARILY SET TO DEBUG LEVEL
-    this.currentLevel = this.levels.DEBUG;
+    // Set to ERROR level for production (temporarily DEBUG for troubleshooting)
+    this.currentLevel = this.levels.ERROR;
     
     // Log history for debugging (limited size)
     this.history = [];

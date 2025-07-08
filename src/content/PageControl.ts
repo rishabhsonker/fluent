@@ -21,9 +21,16 @@ export class PageControl {
   private element: HTMLDivElement | null = null;
   private menuElement: HTMLDivElement | null = null;
   
+  // Drag state
+  private isDragging: boolean = false;
+  private dragOffset = { x: 0, y: 0 };
+  private position = { x: 24, y: 24 }; // Default bottom-right position
+  
   // Store event handlers for cleanup
   private documentClickHandler: ((e: Event) => void) | null = null;
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private mouseMoveHandler: ((e: MouseEvent) => void) | null = null;
+  private mouseUpHandler: ((e: MouseEvent) => void) | null = null;
 
   constructor(settings: PageControlSettings) {
     this.settings = settings;
@@ -45,6 +52,16 @@ export class PageControl {
     iconImg.src = chrome.runtime.getURL('icons/icon-48.png');
     iconImg.alt = 'Fluent';
     
+    // Add fallback in case icon fails to load
+    iconImg.onerror = () => {
+      iconImg.style.display = 'none';
+      const fallbackText = document.createElement('span');
+      fallbackText.textContent = 'F';
+      fallbackText.style.fontSize = '20px';
+      fallbackText.style.fontWeight = 'bold';
+      button.appendChild(fallbackText);
+    };
+    
     button.appendChild(iconImg);
     this.element.appendChild(button);
 
@@ -54,11 +71,17 @@ export class PageControl {
     this.menuElement.innerHTML = this.renderMenu();
     this.element.appendChild(this.menuElement);
 
+    // Set initial position (bottom-right)
+    this.updatePosition();
+    
     // Add to page
     document.body.appendChild(this.element);
 
     // Bind events
     this.bindEvents();
+    
+    // Load saved position
+    this.loadPosition();
 
     // Check pause state
     this.checkPauseState();
@@ -116,12 +139,21 @@ export class PageControl {
   private bindEvents(): void {
     if (!this.element || !this.menuElement) return;
 
-    // Toggle menu
+    // Toggle menu and drag functionality
     const button = this.element.querySelector('.fluent-control-button');
-    if (button instanceof HTMLButtonElement) {
+    if (button instanceof HTMLElement) {
+      // Make button draggable
+      button.addEventListener('mousedown', (e: MouseEvent) => {
+        if (e.button === 0) { // Left click only
+          this.startDrag(e);
+        }
+      });
+      
       button.addEventListener('click', (e: Event) => {
-        e.stopPropagation();
-        this.toggleMenu();
+        if (!this.isDragging) {
+          e.stopPropagation();
+          this.toggleMenu();
+        }
       });
     }
 
@@ -338,26 +370,125 @@ export class PageControl {
     document.body.classList.remove('fluent-paused');
   }
 
+
+  // Drag functionality
+  private startDrag(e: MouseEvent): void {
+    this.isDragging = false; // Reset
+    const rect = this.element!.getBoundingClientRect();
+    
+    this.dragOffset = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+
+    // Mouse move handler
+    this.mouseMoveHandler = (e: MouseEvent) => {
+      this.isDragging = true;
+      this.handleDrag(e);
+    };
+
+    // Mouse up handler
+    this.mouseUpHandler = (e: MouseEvent) => {
+      this.endDrag(e);
+    };
+
+    document.addEventListener('mousemove', this.mouseMoveHandler);
+    document.addEventListener('mouseup', this.mouseUpHandler);
+    
+    // Prevent text selection while dragging
+    e.preventDefault();
+  }
+
+  private handleDrag(e: MouseEvent): void {
+    if (!this.element) return;
+
+    const x = e.clientX - this.dragOffset.x;
+    const y = e.clientY - this.dragOffset.y;
+
+    // Keep within viewport bounds
+    const maxX = window.innerWidth - this.element.offsetWidth;
+    const maxY = window.innerHeight - this.element.offsetHeight;
+
+    this.position.x = Math.max(0, Math.min(x, maxX));
+    this.position.y = Math.max(0, Math.min(y, maxY));
+
+    this.updatePositionStyle();
+  }
+
+  private endDrag(e: MouseEvent): void {
+    if (this.mouseMoveHandler) {
+      document.removeEventListener('mousemove', this.mouseMoveHandler);
+      this.mouseMoveHandler = null;
+    }
+    
+    if (this.mouseUpHandler) {
+      document.removeEventListener('mouseup', this.mouseUpHandler);
+      this.mouseUpHandler = null;
+    }
+
+    // Save position if we actually dragged
+    if (this.isDragging) {
+      this.savePosition();
+      // Reset dragging state after a short delay to prevent click event
+      setTimeout(() => {
+        this.isDragging = false;
+      }, 100);
+    }
+  }
+
+  private updatePositionStyle(): void {
+    if (!this.element) return;
+    
+    this.element.style.left = `${this.position.x}px`;
+    this.element.style.top = `${this.position.y}px`;
+    this.element.style.right = 'auto';
+    this.element.style.bottom = 'auto';
+  }
+
+  private savePosition(): void {
+    try {
+      chrome.storage.local.set({
+        'fluent_control_position': this.position
+      });
+    } catch (error) {
+      logger.error('Failed to save position:', error);
+    }
+  }
+
+  private async loadPosition(): Promise<void> {
+    try {
+      const result = await chrome.storage.local.get('fluent_control_position');
+      if (result.fluent_control_position) {
+        this.position = result.fluent_control_position;
+        
+        // Ensure position is within current viewport
+        const maxX = window.innerWidth - (this.element?.offsetWidth || 48);
+        const maxY = window.innerHeight - (this.element?.offsetHeight || 48);
+        
+        this.position.x = Math.max(0, Math.min(this.position.x, maxX));
+        this.position.y = Math.max(0, Math.min(this.position.y, maxY));
+        
+        this.updatePositionStyle();
+      } else {
+        // Default to bottom-right
+        this.updatePosition();
+      }
+    } catch (error) {
+      logger.error('Failed to load position:', error);
+      this.updatePosition();
+    }
+  }
+
   public updatePosition(): void {
     if (!this.element) return;
 
-    // Smart positioning to avoid overlapping content
-    const button = this.element.querySelector('.fluent-control-button');
-    if (!button || !(button instanceof HTMLElement)) return;
-
-    const rect = button.getBoundingClientRect();
+    // Default to bottom-right corner
+    this.position = {
+      x: window.innerWidth - (this.element.offsetWidth || 48) - 24,
+      y: window.innerHeight - (this.element.offsetHeight || 48) - 24
+    };
     
-    // Check if button overlaps any fixed/sticky elements
-    const elements = document.elementsFromPoint(rect.right - 28, rect.bottom - 28);
-    const hasOverlap = elements.some((el: Element) => {
-      const style = window.getComputedStyle(el);
-      return style.position === 'fixed' || style.position === 'sticky';
-    });
-    
-    if (hasOverlap) {
-      // Move up
-      this.element.classList.add('fluent-control-adjusted');
-    }
+    this.updatePositionStyle();
   }
 
   public destroy(): void {
@@ -370,6 +501,16 @@ export class PageControl {
     if (this.keydownHandler) {
       document.removeEventListener('keydown', this.keydownHandler);
       this.keydownHandler = null;
+    }
+    
+    if (this.mouseMoveHandler) {
+      document.removeEventListener('mousemove', this.mouseMoveHandler);
+      this.mouseMoveHandler = null;
+    }
+    
+    if (this.mouseUpHandler) {
+      document.removeEventListener('mouseup', this.mouseUpHandler);
+      this.mouseUpHandler = null;
     }
     
     // Remove element from DOM

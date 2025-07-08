@@ -35,6 +35,7 @@ interface SiteConfig {
   contentSelector: string;
   skipSelectors?: string[];
   useMutationObserver?: boolean;
+  wordsPerPage?: number;
 }
 
 (async function() {
@@ -205,7 +206,7 @@ interface SiteConfig {
       ...SITE_CONFIGS.default,
       skipSelectors: [
         ...(config.globalSkipSelectors || []),
-        ...SITE_CONFIGS.default.skipSelectors
+        ...(SITE_CONFIGS.default.skipSelectors || [])
       ]
     };
   }
@@ -284,7 +285,7 @@ interface SiteConfig {
         
         // Set custom word limit if specified in config
         if (config.wordsPerPage) {
-          replacerInstance.config.MAX_WORDS_PER_PAGE = config.wordsPerPage;
+          replacerInstance.setMaxWordsPerPage(config.wordsPerPage);
         }
         
         // Check if site is enabled

@@ -293,13 +293,13 @@ export class SimpleTranslator {
             const contextData = await contextResponse.json();
             // Attach context to each translation
             for (const [word, context] of Object.entries(contextData.contexts || {})) {
-              if (data.translations[word] && context) {
+              if (data.translations[word] && context && typeof context === 'object') {
                 // Store context with translation using special format
                 data.translations[word] = {
                   translation: data.translations[word],
-                  pronunciation: context.pronunciation,
-                  meaning: context.meaning,
-                  example: context.example
+                  pronunciation: (context as any).pronunciation,
+                  meaning: (context as any).meaning,
+                  example: (context as any).example
                 };
               }
             }
