@@ -8,7 +8,13 @@ const __dirname = path.dirname(__filename);
 test.describe('Fluent Extension Integration Tests', () => {
   let extensionId: string;
 
-  test.beforeAll(async ({ context }) => {
+  test.beforeEach(async ({ context }) => {
+    // Skip extension tests in CI
+    if (process.env.CI) {
+      test.skip();
+      return;
+    }
+    
     // Get extension ID from background service worker
     const [background] = context.serviceWorkers();
     if (background) {

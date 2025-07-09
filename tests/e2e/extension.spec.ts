@@ -1,5 +1,8 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 let context: BrowserContext;
 let extensionId: string;
