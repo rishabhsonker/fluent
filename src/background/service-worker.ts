@@ -160,6 +160,10 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
       return updateSiteSettings(request.hostname, request.settings);
       
     case 'GET_TRANSLATIONS':
+      logger.info('GET_TRANSLATIONS request:', { 
+        words: request.words, 
+        language: request.language 
+      });
       return getTranslations(request.words, request.language);
       
     case 'LOG_PERFORMANCE':
@@ -196,6 +200,12 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
       
     case 'GET_RATE_LIMITS':
       return getRateLimits();
+      
+    case 'DEBUG_RESET_AUTH':
+      // Debug: Clear and reinitialize auth
+      await InstallationAuth.clear();
+      await InstallationAuth.initialize();
+      return { success: true, message: 'Auth reset and reinitialized' };
       
     default:
       throw new Error(`Unknown message type: ${request.type}`);
@@ -296,6 +306,10 @@ async function getTranslations(words: string[], language: string): Promise<any> 
   }
   
   try {
+    logger.info('About to call translator.translate', {
+      words: validWords,
+      language: validLanguage
+    });
     // Use the translator service which handles caching internally
     const result = await translator.translate(validWords, validLanguage as LanguageCode);
     
@@ -304,6 +318,7 @@ async function getTranslations(words: string[], language: string): Promise<any> 
     state.cacheStats.hits += cacheInfo.hits;
     state.cacheStats.misses += cacheInfo.misses;
     
+    logger.info('Translation result:', result);
     return result;
   } catch (error) {
     logger.error('Translation error:', error);

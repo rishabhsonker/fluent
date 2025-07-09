@@ -242,7 +242,7 @@ export class SimpleTranslator {
         targetLanguage: langCode,
         originalLanguage: targetLanguage,
         endpoint: `${API_CONFIG.TRANSLATOR_API}/translate`,
-        authMethod,
+        authMethod: 'installation',
         headers: Object.keys(authHeaders)
       });
       

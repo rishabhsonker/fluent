@@ -298,6 +298,12 @@ export class InstallationAuth {
    * Get stored installation data (for checking existence)
    */
   static async getInstallationData(): Promise<InstallationData | null> {
-    return this.getStoredAuth();
+    const data = await this.getStoredAuth();
+    logger.info('Getting installation data:', {
+      hasData: !!data,
+      installationId: data?.installationId,
+      hasToken: !!data?.token
+    });
+    return data;
   }
 }
