@@ -1,6 +1,6 @@
 # Fluent - Chrome Extension
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/yourusername/fluent/releases)
+[![Version](https://img.shields.io/github/v/release/yourusername/fluent?label=version)](https://github.com/yourusername/fluent/releases)
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Coming%20Soon-green.svg)](#)
 [![Tests](https://github.com/yourusername/fluent/actions/workflows/test.yml/badge.svg)](https://github.com/yourusername/fluent/actions/workflows/test.yml)
 [![Worker Deploy](https://github.com/yourusername/fluent/actions/workflows/cloudflare-worker.yml/badge.svg)](https://github.com/yourusername/fluent/actions/workflows/cloudflare-worker.yml)
