@@ -100,7 +100,7 @@ export default {
     const corsHeaders = {
       'Access-Control-Allow-Origin': isValidExtension ? origin : '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Extension-Id, X-Timestamp, X-Auth-Token, X-Client-Id',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Installation-Id, X-Timestamp, X-Signature',
       'Access-Control-Max-Age': '86400',
       'Access-Control-Allow-Credentials': 'false',
     };
@@ -236,121 +236,66 @@ export default {
   },
 };
 
-/**
- * Verify installation-based authentication
- */
-async function verifyInstallationAuth(request, env) {
-  const installationId = request.headers.get('X-Installation-Id');
-  const signature = request.headers.get('X-Signature');
-  const timestamp = request.headers.get('X-Timestamp');
-  
-  if (!installationId || !signature || !timestamp) {
-    return { status: 401, message: 'Missing authentication headers' };
-  }
-  
-  // Verify timestamp (5-minute window)
-  const requestTime = parseInt(timestamp, 10);
-  const now = Date.now();
-  if (isNaN(requestTime) || Math.abs(now - requestTime) > 300000) {
-    return { status: 401, message: 'Authentication token expired' };
-  }
-  
-  // For now, accept any valid installation ID
-  // In production, you might want to check against registered installations
-  // stored in KV or validate the signature using a secret
-  
-  // Check if installation is registered (optional)
-  const installationData = await env.TRANSLATION_CACHE.get(`installation:${installationId}`);
-  if (!installationData) {
-    logInfo('New installation detected', { installationId });
-    // Optionally auto-register new installations
-  }
-  
-  // Verify signature (simplified for now)
-  // In production, implement proper HMAC verification
-  const expectedSignature = await generateSignature(installationId, timestamp, env);
-  if (signature !== expectedSignature) {
-    // For now, log but don't reject to allow migration
-    logInfo('Signature mismatch - allowing for migration period', { installationId });
-  }
-  
-  return null; // Authentication successful
-}
-
-/**
- * Generate signature for verification
- */
-async function generateSignature(installationId, timestamp, env) {
-  const secret = env.FLUENT_SHARED_SECRET || 'installation-secret';
-  const message = `${installationId}-${timestamp}`;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, data);
-  return btoa(String.fromCharCode(...new Uint8Array(signature)));
-}
 
 /**
  * Verify authentication headers
  */
 async function verifyAuthentication(request, env) {
-  // Check for new installation-based auth first
+  // Only use installation-based auth
+  const authHeader = request.headers.get('Authorization');
   const installationId = request.headers.get('X-Installation-Id');
   const signature = request.headers.get('X-Signature');
   const timestamp = request.headers.get('X-Timestamp');
   
-  if (installationId && signature && timestamp) {
-    // New installation-based auth
-    return await verifyInstallationAuth(request, env);
-  }
-  
-  // Fallback to old auth for backward compatibility
-  const extensionId = request.headers.get('X-Extension-Id');
-  const authToken = request.headers.get('X-Auth-Token');
-
-  // Check required headers for old auth
-  if (!extensionId || !timestamp || !authToken) {
+  // Check required headers
+  if (!authHeader || !authHeader.startsWith('Bearer ') || !installationId || !signature || !timestamp) {
     return { status: 401, message: 'Missing authentication headers' };
   }
-
+  
+  // Extract token from Bearer header
+  const token = authHeader.substring(7);
+  
   // Verify timestamp (5-minute window)
   const requestTime = parseInt(timestamp, 10);
   const now = Date.now();
   if (isNaN(requestTime) || Math.abs(now - requestTime) > 300000) {
     return { status: 401, message: 'Authentication token expired' };
   }
-
-  // Get shared secret from environment
-  const sharedSecret = env.FLUENT_SHARED_SECRET;
-  if (!sharedSecret) {
-    logError('FLUENT_SHARED_SECRET not configured', new Error('Missing configuration'));
-    return { status: 500, message: 'Server configuration error' };
+  
+  // Check if installation exists
+  const installationData = await env.TRANSLATION_CACHE.get(`installation:${installationId}`);
+  if (!installationData) {
+    return { status: 401, message: 'Unknown installation' };
   }
-
-  // Recreate and verify token
-  const message = `${extensionId}-${timestamp}-${sharedSecret}`;
+  
+  // Verify signature using HMAC with the token as key
+  const message = `${installationId}-${timestamp}`;
   const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const expectedToken = btoa(hashArray.map(b => String.fromCharCode(b)).join(''));
-
-  if (authToken !== expectedToken) {
-    return { status: 401, message: 'Invalid authentication token' };
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(token),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signatureBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+  const expectedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
+  
+  if (signature !== expectedSignature) {
+    return { status: 401, message: 'Invalid signature' };
   }
-
-  // Optional: Verify extension ID allowlist
-  const allowedExtensions = (env.ALLOWED_EXTENSION_IDS || '').split(',').filter(id => id);
-  if (allowedExtensions.length > 0 && !allowedExtensions.includes(extensionId)) {
-    return { status: 403, message: 'Extension not authorized' };
+  
+  // Verify the Bearer token is valid
+  const tokenData = await env.TRANSLATION_CACHE.get(`token:${token}`);
+  if (!tokenData) {
+    return { status: 401, message: 'Invalid token' };
   }
-
+  
+  const tokenInfo = JSON.parse(tokenData);
+  if (tokenInfo.installationId !== installationId) {
+    return { status: 401, message: 'Token mismatch' };
+  }
+  
   return null; // Authentication successful
 }
 
@@ -360,9 +305,8 @@ async function verifyAuthentication(request, env) {
 async function handleTranslate(request, env, ctx) {
   const startTime = Date.now(); // Track request processing time
   
-  // Get installation ID for rate limiting (will be required after auth update)
-  const installationId = request.headers.get('X-Installation-ID') || 
-                        request.headers.get('X-Extension-Id') || 
+  // Get installation ID for rate limiting
+  const installationId = request.headers.get('X-Installation-Id') || 
                         request.headers.get('CF-Connecting-IP') || 
                         'anonymous';
   
@@ -1424,24 +1368,48 @@ async function handleInstallationRegistration(request, env, ctx) {
  * Generate installation-specific API token
  */
 async function generateInstallationToken(installationId, env) {
-  const secret = env.FLUENT_SHARED_SECRET || 'default-secret';
-  const message = `${installationId}-${Date.now()}-${secret}`;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return btoa(hashArray.map(b => String.fromCharCode(b)).join(''));
+  // Generate a random token for this installation
+  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+  const token = btoa(String.fromCharCode(...randomBytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  
+  // Store the token mapping for future verification
+  await env.TRANSLATION_CACHE.put(
+    `token:${token}`,
+    JSON.stringify({
+      installationId,
+      createdAt: Date.now(),
+      type: 'api'
+    }),
+    { expirationTtl: 30 * 24 * 60 * 60 } // 30 days
+  );
+  
+  return token;
 }
 
 /**
  * Generate refresh token
  */
 async function generateRefreshToken(installationId, env) {
-  const secret = env.FLUENT_SHARED_SECRET || 'default-secret';
-  const message = `refresh-${installationId}-${Date.now()}-${secret}`;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return btoa(hashArray.map(b => String.fromCharCode(b)).join(''));
+  // Generate a random refresh token
+  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+  const token = btoa(String.fromCharCode(...randomBytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  
+  // Store the refresh token mapping
+  await env.TRANSLATION_CACHE.put(
+    `refresh:${token}`,
+    JSON.stringify({
+      installationId,
+      createdAt: Date.now(),
+      type: 'refresh'
+    }),
+    { expirationTtl: 90 * 24 * 60 * 60 } // 90 days
+  );
+  
+  return token;
 }

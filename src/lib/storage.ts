@@ -48,8 +48,8 @@ class StorageManager {
         return this.cache.get(key);
       }
 
-      // Get from Chrome storage
-      const result = await chrome.storage.sync.get(key);
+      // Get from Chrome storage (using local for larger capacity)
+      const result = await chrome.storage.local.get(key);
       const value = result[key] ?? defaultValue;
       
       // Update cache
@@ -68,8 +68,8 @@ class StorageManager {
       // Update cache immediately
       this.cache.set(key, value);
       
-      // Save to Chrome storage
-      await chrome.storage.sync.set({ [key]: value });
+      // Save to Chrome storage (using local for larger capacity)
+      await chrome.storage.local.set({ [key]: value });
       
       // Notify listeners
       this.notifyListeners(key, value);
@@ -86,7 +86,7 @@ class StorageManager {
   // Get multiple keys at once
   async getMultiple<T = any>(keys: string[]): Promise<Record<string, T>> {
     try {
-      const result = await chrome.storage.sync.get(keys);
+      const result = await chrome.storage.local.get(keys);
       
       // Update cache
       for (const [key, value] of Object.entries(result)) {
@@ -104,7 +104,7 @@ class StorageManager {
   async remove(key: string): Promise<boolean> {
     try {
       this.cache.delete(key);
-      await chrome.storage.sync.remove(key);
+      await chrome.storage.local.remove(key);
       this.notifyListeners(key, undefined);
       return true;
     } catch (error) {
@@ -117,7 +117,7 @@ class StorageManager {
   async clear(): Promise<boolean> {
     try {
       this.cache.clear();
-      await chrome.storage.sync.clear();
+      await chrome.storage.local.clear();
       return true;
     } catch (error) {
       logger.error('Storage clear error:', error);
@@ -158,8 +158,8 @@ class StorageManager {
   // Get storage usage
   async getUsage(): Promise<StorageUsage> {
     try {
-      const bytesInUse = await chrome.storage.sync.getBytesInUse();
-      const quota = chrome.storage.sync.QUOTA_BYTES;
+      const bytesInUse = await chrome.storage.local.getBytesInUse();
+      const quota = chrome.storage.local.QUOTA_BYTES || 10485760; // 10MB default
       
       return {
         used: bytesInUse,

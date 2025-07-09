@@ -29,8 +29,8 @@ class Logger {
 
   constructor() {
     // Set based on environment - can be overridden by env variable
-    this.isDevelopment = process.env.NODE_ENV === 'development' || 
-                        process.env.FLUENT_DEBUG === 'true';
+    this.isDevelopment = import.meta.env.DEV || 
+                        import.meta.env.VITE_FLUENT_DEBUG === 'true';
     
     // Log levels
     this.levels = {
@@ -143,7 +143,7 @@ export const logger = new Logger();
 // For production: Override console methods to prevent any accidental logging
 (() => {
   // Only override in production
-  if (process.env.NODE_ENV !== 'development' && process.env.FLUENT_DEBUG !== 'true') {
+  if (!import.meta.env.DEV && import.meta.env.VITE_FLUENT_DEBUG !== 'true') {
     const noop = (): void => {};
     // Keep error and warn for critical issues only
     console.log = noop;

@@ -8,10 +8,10 @@ import { rateLimiter } from './rateLimiter';
 import { logger } from './logger';
 import { costGuard } from './costGuard';
 import { secureCrypto } from './secureCrypto';
-import { ExtensionAuthenticator } from './auth';
 import { InstallationAuth } from './installationAuth';
 import { offlineManager } from './offlineManager';
 import { translationCache } from './memoryCache';
+import { fetchWithRetry, NetworkError } from './networkUtils';
 import type { 
   Translation, 
   TranslationResult, 
@@ -218,14 +218,19 @@ export class SimpleTranslator {
     return await rateLimiter.withRateLimit('translation', identifier, async () => {
       // No mock mode in production
       
-      // Get authentication headers - try new installation auth first
+      // Use installation-based auth
       let authHeaders;
       try {
         authHeaders = await InstallationAuth.getAuthHeaders();
-      } catch (error) {
-        // Fallback to old auth for backward compatibility
-        logger.warn('Installation auth failed, using legacy auth', error);
-        authHeaders = await ExtensionAuthenticator.generateAuthHeaders();
+        logger.info('Installation auth headers generated:', {
+          hasAuth: !!authHeaders['Authorization'],
+          hasInstallationId: !!authHeaders['X-Installation-Id'],
+          hasTimestamp: !!authHeaders['X-Timestamp'],
+          hasSignature: !!authHeaders['X-Signature']
+        });
+      } catch (authError) {
+        logger.error('Failed to generate installation auth headers:', authError);
+        throw new Error('Authentication failed - please reload the extension');
       }
       
       // Convert language name to code (e.g., 'spanish' -> 'es')
@@ -235,16 +240,34 @@ export class SimpleTranslator {
       logger.info('Translation request:', {
         words,
         targetLanguage: langCode,
-        originalLanguage: targetLanguage
+        originalLanguage: targetLanguage,
+        endpoint: `${API_CONFIG.TRANSLATOR_API}/translate`,
+        authMethod,
+        headers: Object.keys(authHeaders)
       });
       
-      const response = await fetch(`${API_CONFIG.TRANSLATOR_API}/translate`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...authHeaders
+      const response = await fetchWithRetry(
+        `${API_CONFIG.TRANSLATOR_API}/translate`,
+        {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...authHeaders
+          },
+          body: JSON.stringify({ words, targetLanguage: langCode, apiKey })
         },
-        body: JSON.stringify({ words, targetLanguage: langCode, apiKey })
+        {
+          maxRetries: 3,
+          onRetry: (attempt, error) => {
+            logger.warn(`Translation retry attempt ${attempt}`, { error: error.message });
+          }
+        }
+      );
+      
+      logger.info('Translation API response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
       });
       
       if (!response.ok) {
@@ -258,7 +281,13 @@ export class SimpleTranslator {
           status: response.status,
           error: error,
           request: { words, targetLanguage: langCode, originalTargetLanguage: targetLanguage },
-          requestBody: JSON.stringify({ words, targetLanguage: langCode, apiKey })
+          requestBody: JSON.stringify({ words, targetLanguage: langCode, apiKey }),
+          authHeaders: {
+            hasAuth: !!authHeaders['Authorization'],
+            hasInstallationId: !!authHeaders['X-Installation-Id'],
+            hasTimestamp: !!authHeaders['X-Timestamp'],
+            hasSignature: !!authHeaders['X-Signature']
+          }
         });
         throw new Error(error.error || 'Translation failed');
       }
@@ -297,18 +326,25 @@ export class SimpleTranslator {
       // After getting translations, also get context (pronunciation, meaning, example)
       if (data.translations && Object.keys(data.translations).length > 0) {
         try {
-          const contextResponse = await fetch(`${API_CONFIG.TRANSLATOR_API}/context`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              ...authHeaders
+          const contextResponse = await fetchWithRetry(
+            `${API_CONFIG.TRANSLATOR_API}/context`,
+            {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                ...authHeaders
+              },
+              body: JSON.stringify({ 
+                words: Object.keys(data.translations), 
+                translations: data.translations,
+                targetLanguage: langCode 
+              })
             },
-            body: JSON.stringify({ 
-              words: Object.keys(data.translations), 
-              translations: data.translations,
-              targetLanguage: langCode 
-            })
-          });
+            {
+              maxRetries: 2, // Fewer retries for context since it's optional
+              initialDelay: 500 // Start with shorter delay
+            }
+          );
           
           if (contextResponse.ok) {
             const contextData = await contextResponse.json();

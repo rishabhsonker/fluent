@@ -6,7 +6,6 @@ import { validator } from '../lib/validator.js';
 import { logger } from '../lib/logger.js';
 import { serviceWorkerSecurityManager as securityManager } from '../lib/securityServiceWorker.js';
 import { secureCrypto } from '../lib/secureCrypto.js';
-import { ExtensionAuthenticator } from '../lib/auth.js';
 import { InstallationAuth } from '../lib/installationAuth.js';
 import { contentScriptManager } from './contentScriptManager.js';
 import { offlineManager } from '../lib/offlineManager.js';
@@ -56,16 +55,19 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
   
   // Set default settings and initialize installation auth
   if (details.reason === 'install') {
-    await chrome.storage.sync.set({
+    await chrome.storage.local.set({
       [STORAGE_KEYS.USER_SETTINGS]: DEFAULT_SETTINGS,
       [STORAGE_KEYS.SITE_SETTINGS]: {}
     });
     
-    // Initialize installation-based authentication
-    await InstallationAuth.initialize();
-    
-    // Keep old authenticator for backward compatibility during transition
-    await ExtensionAuthenticator.initialize();
+    // Initialize installation authentication
+    try {
+      await InstallationAuth.initialize();
+      logger.info('Installation auth initialized successfully');
+    } catch (error) {
+      logger.error('Failed to initialize installation authentication:', error);
+      // Continue without authentication - user can still use their own API key
+    }
   }
   
   // Migrate API keys from old storage on update
@@ -73,9 +75,14 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
     await secureCrypto.migrateFromOldStorage();
     
     // Initialize installation auth if not already done
-    const installationData = await InstallationAuth.getInstallationData();
-    if (!installationData) {
-      await InstallationAuth.initialize();
+    try {
+      const installationData = await InstallationAuth.getInstallationData();
+      if (!installationData) {
+        await InstallationAuth.initialize();
+      }
+    } catch (error) {
+      logger.error('Failed to initialize authentication on update:', error);
+      // Continue without authentication
     }
   }
   
@@ -639,6 +646,17 @@ async function getRateLimits(): Promise<any> {
   try {
     await loadSettings();
     logger.info('Service worker initialized with settings:', state.settings);
+    
+    // Ensure InstallationAuth is initialized
+    try {
+      const installationData = await InstallationAuth.getInstallationData();
+      if (!installationData) {
+        logger.info('Initializing installation auth on service worker startup');
+        await InstallationAuth.initialize();
+      }
+    } catch (error) {
+      logger.error('Failed to ensure installation auth:', error);
+    }
   } catch (error) {
     logger.error('Failed to initialize service worker settings:', error);
   }

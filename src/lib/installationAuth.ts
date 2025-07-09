@@ -6,6 +6,7 @@
 import { secureCrypto } from './secureCrypto';
 import { API_CONFIG } from './constants';
 import { logger } from './logger';
+import { fetchWithRetry } from './networkUtils';
 
 interface InstallationData {
   installationId: string;
@@ -41,15 +42,18 @@ export class InstallationAuth {
     const auth = await this.getStoredAuth();
     
     if (!auth) {
+      logger.info('No existing auth, registering new installation');
       await this.registerNewInstallation();
       const newAuth = await this.getStoredAuth();
       if (!newAuth) {
         throw new Error('Failed to obtain installation token');
       }
+      logger.info('New auth obtained:', { installationId: newAuth.installationId });
       return newAuth.token;
     }
     
     if (this.shouldRefreshToken(auth)) {
+      logger.info('Token refresh needed');
       await this.refreshToken(auth);
       const refreshedAuth = await this.getStoredAuth();
       if (!refreshedAuth) {
@@ -58,6 +62,7 @@ export class InstallationAuth {
       return refreshedAuth.token;
     }
     
+    logger.debug('Using existing token for installation:', auth.installationId);
     return auth.token;
   }
   
@@ -83,28 +88,61 @@ export class InstallationAuth {
   private static async registerNewInstallation(): Promise<void> {
     const installationId = crypto.randomUUID();
     
+    logger.info('Attempting to register new installation:', {
+      installationId,
+      endpoint: `${API_CONFIG.TRANSLATOR_API}/installations/register`
+    });
+    
     try {
-      const response = await fetch(`${API_CONFIG.TRANSLATOR_API}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await fetchWithRetry(
+        `${API_CONFIG.TRANSLATOR_API}/installations/register`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            installationId,
+            extensionVersion: chrome.runtime.getManifest().version,
+            timestamp: Date.now(),
+          }),
         },
-        body: JSON.stringify({
-          installationId,
-          extensionVersion: chrome.runtime.getManifest().version,
-          timestamp: Date.now(),
-        }),
+        {
+          maxRetries: 5, // More retries for registration since it's critical
+          initialDelay: 2000, // Start with 2 seconds
+          onRetry: (attempt) => {
+            logger.info(`Registration retry attempt ${attempt}/${5}`);
+          }
+        }
+      );
+      
+      logger.info('Registration response:', {
+        status: response.status,
+        statusText: response.statusText
       });
       
       if (!response.ok) {
-        throw new Error(`Registration failed: ${response.status}`);
+        // If 404, the auth endpoint might not be implemented yet
+        if (response.status === 404) {
+          logger.warn('Auth endpoint not found, fallback auth will not work properly');
+          // Don't use fallback auth as it won't work with the Bearer token format
+          throw new Error('Installation registration endpoint not available');
+        }
+        const errorText = await response.text();
+        logger.error('Registration failed:', { status: response.status, error: errorText });
+        throw new Error(`Registration failed: ${response.status} - ${errorText}`);
       }
       
-      const { token } = await response.json();
+      const data = await response.json();
+      logger.info('Registration successful:', { 
+        hasToken: !!data.token,
+        hasRefreshToken: !!data.refreshToken,
+        expiresIn: data.expiresIn
+      });
       
       const installationData: InstallationData = {
         installationId,
-        token,
+        token: data.token || data.apiToken, // Handle both possible field names
         createdAt: Date.now(),
         lastRefreshed: Date.now(),
       };
@@ -161,10 +199,10 @@ export class InstallationAuth {
   
   /**
    * Check if token should be refreshed
+   * Currently disabled as the worker doesn't have a refresh endpoint
    */
   private static shouldRefreshToken(auth: InstallationData): boolean {
-    const timeSinceRefresh = Date.now() - auth.lastRefreshed;
-    return timeSinceRefresh > this.TOKEN_REFRESH_INTERVAL;
+    return false;
   }
   
   /**
@@ -209,12 +247,51 @@ export class InstallationAuth {
   static async getAuthHeaders(): Promise<Record<string, string>> {
     const token = await this.getToken();
     const installationId = await this.getInstallationId();
+    const timestamp = Date.now().toString();
+    
+    // Generate signature using HMAC-SHA256
+    const signature = await this.generateSignature(installationId, timestamp);
     
     return {
       'Authorization': `Bearer ${token}`,
       'X-Installation-Id': installationId,
-      'X-Timestamp': Date.now().toString(),
+      'X-Timestamp': timestamp,
+      'X-Signature': signature,
     };
+  }
+  
+  /**
+   * Generate HMAC signature for request verification
+   */
+  private static async generateSignature(installationId: string, timestamp: string): Promise<string> {
+    try {
+      // Use the installation token as the signing key
+      const token = await this.getToken();
+      const message = `${installationId}-${timestamp}`;
+      
+      // Convert string to ArrayBuffer
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(token);
+      const messageData = encoder.encode(message);
+      
+      // Import key for HMAC
+      const key = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+      
+      // Generate signature
+      const signature = await crypto.subtle.sign('HMAC', key, messageData);
+      
+      // Convert to base64
+      return btoa(String.fromCharCode(...new Uint8Array(signature)));
+    } catch (error) {
+      logger.error('Failed to generate signature:', error);
+      throw error;
+    }
   }
   
   /**

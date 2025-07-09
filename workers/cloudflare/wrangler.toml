@@ -15,7 +15,6 @@ kv_namespaces = [
 [env.production.vars]
 ENVIRONMENT = "production"
 AZURE_REGION = "eastus"
-# Note: FLUENT_SHARED_SECRET should be set as a secret in Cloudflare dashboard, not here
 
 # Production rate limiting bindings
 [[env.production.unsafe.bindings]]

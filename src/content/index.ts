@@ -64,9 +64,13 @@ interface SiteConfig {
   let tooltipInstance: Tooltip | null = null;
   let pageControlInstance: PageControl | null = null;
   let mutationObserver: MutationObserver | null = null;
+  let navigationObserver: MutationObserver | null = null;
   let observerTimeout: number | undefined;
   let replacerInstance: WordReplacer | null = null;
   let textProcessorInstance: TextProcessor | null = null;
+  
+  // Initialization lock to prevent race conditions
+  let initializationPromise: Promise<void> | null = null;
   
   // Configuration
   const CONFIG: ContentConfig = {
@@ -231,9 +235,22 @@ interface SiteConfig {
     
     return false;
   }
-
-  // Main processing function
+  
+  // Main processing function with initialization lock
   async function processContent(): Promise<void> {
+    if (initializationPromise) {
+      return initializationPromise;
+    }
+    
+    initializationPromise = doProcessContent().finally(() => {
+      initializationPromise = null;
+    });
+    
+    return initializationPromise;
+  }
+
+  // Main processing function (internal implementation)
+  async function doProcessContent(): Promise<void> {
     if (!(await shouldProcessSite())) {
       logger.info('Site blocked by configuration');
       return;
@@ -582,12 +599,30 @@ interface SiteConfig {
       }, CONFIG.DEBOUNCE_DELAY);
     });
 
-    mutationObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: false,
-      attributes: false
-    });
+    // Ensure document.body exists before observing
+    if (document.body) {
+      mutationObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: false,
+        attributes: false
+      });
+    } else {
+      // If body doesn't exist yet, wait for it
+      const waitForBody = () => {
+        if (document.body && mutationObserver) {
+          mutationObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: false,
+            attributes: false
+          });
+        } else if (!document.body) {
+          requestAnimationFrame(waitForBody);
+        }
+      };
+      waitForBody();
+    }
     }
   });
 
@@ -602,6 +637,12 @@ interface SiteConfig {
     if (mutationObserver) {
       mutationObserver.disconnect();
       mutationObserver = null;
+    }
+    
+    // Disconnect navigation observer
+    if (navigationObserver) {
+      navigationObserver.disconnect();
+      navigationObserver = null;
     }
     
     // Destroy tooltip
@@ -648,6 +689,48 @@ interface SiteConfig {
     }
   });
   
+  // Handle SPA navigation
+  let lastUrl = location.href;
+  const checkNavigation = () => {
+    if (location.href !== lastUrl) {
+      lastUrl = location.href;
+      logger.info('SPA navigation detected, reinitializing');
+      cleanup();
+      // Re-initialize after a short delay
+      setTimeout(async () => {
+        const settings = await chrome.storage.local.get(['enabled', 'siteSettings']);
+        if (settings.enabled) {
+          const hostname = window.location.hostname;
+          const siteSettings = settings.siteSettings?.[hostname];
+          if (!siteSettings || siteSettings.enabled !== false) {
+            processContent();
+          }
+        }
+      }, 100);
+    }
+  };
+  
+  // Monitor for SPA navigation
+  navigationObserver = new MutationObserver(checkNavigation);
+  navigationObserver.observe(document, { subtree: true, childList: true });
+  
+  // Also listen for history changes
+  window.addEventListener('popstate', checkNavigation);
+  
+  // Override pushState and replaceState
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState;
+  
+  history.pushState = function(...args) {
+    originalPushState.apply(history, args);
+    checkNavigation();
+  };
+  
+  history.replaceState = function(...args) {
+    originalReplaceState.apply(history, args);
+    checkNavigation();
+  };
+
   // Update singleton with actual functions and mark as initialized
   window.__fluent = {
     initialized: true,

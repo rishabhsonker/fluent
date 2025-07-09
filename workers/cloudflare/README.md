@@ -21,10 +21,7 @@ npx wrangler secret put MICROSOFT_TRANSLATOR_KEY
 # Claude API key (optional, for enhanced context)
 npx wrangler secret put CLAUDE_API_KEY
 
-# Shared secret for authentication (required)
-npx wrangler secret put FLUENT_SHARED_SECRET
-
-# Allowed extension IDs (optional)
+# Allowed extension IDs (optional, for security)
 npx wrangler secret put ALLOWED_EXTENSION_IDS
 ```
 

@@ -188,19 +188,27 @@ export const WORD_CONFIG: WordConfig = {
 // and should not be included in production builds
 
 // API Configuration
-export const API_CONFIG: ApiConfig = {
-  // Cloudflare Worker endpoint - uses environment-based configuration
-  TRANSLATOR_API: (() => {
-    // Check if we're in development mode
-    const manifest = chrome?.runtime?.getManifest?.();
-    const version = manifest?.version || '1.0.0';
-    const isDev = version.includes('dev') || version.includes('beta') || 
-                  process.env.NODE_ENV === 'development';
+export const getApiEndpoint = (): string => {
+  // Check if we're in development mode at runtime
+  try {
+    const manifest = chrome.runtime.getManifest();
+    const isDev = manifest.version.includes('dev') || 
+                  manifest.version.includes('0.0.0');
     
-    return isDev 
-      ? 'https://fluent-translator-dev.workers.dev'
+    return isDev
+      ? 'https://fluent-translator.dev.workers.dev'
       : 'https://fluent-translator.hq.workers.dev';
-  })(),
+  } catch {
+    // Fallback if chrome.runtime is not available
+    return 'https://fluent-translator.hq.workers.dev';
+  }
+};
+
+export const API_CONFIG: ApiConfig = {
+  // Cloudflare Worker endpoint (will be determined at runtime)
+  get TRANSLATOR_API() {
+    return getApiEndpoint();
+  }
 } as const;
 
 // Storage keys

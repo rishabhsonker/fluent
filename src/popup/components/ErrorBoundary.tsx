@@ -77,7 +77,7 @@ export class ReactErrorBoundary extends Component<Props, State> {
             <p>We're sorry, but something unexpected happened.</p>
             
             {/* Show details in development */}
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <details className="error-details">
                 <summary>Error details</summary>
                 <pre>{this.state.error.toString()}</pre>

@@ -6,7 +6,6 @@ on:
     paths:
       - 'workers/cloudflare/**'
       - '.github/workflows/cloudflare-worker.yml'
-      - 'src/lib/auth.ts'
       - 'src/lib/installationAuth.ts'
       - 'src/config/auth.config.ts'
   pull_request:
