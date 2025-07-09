@@ -258,9 +258,9 @@ export class Tooltip {
         original, 
         translation, 
         language, 
-        pronunciation !== undefined ? pronunciation : undefined,
-        meaning !== undefined ? meaning : undefined,
-        example !== undefined ? example : undefined
+        pronunciation || undefined,  // null/empty string becomes undefined
+        meaning || undefined,        // null/empty string becomes undefined
+        example || undefined         // null/empty string becomes undefined
       );
       
       // Show and position
