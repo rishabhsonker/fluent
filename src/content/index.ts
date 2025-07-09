@@ -123,10 +123,8 @@ interface SiteConfig {
     
     try {
       const response = await fetch(`${API_CONFIG.TRANSLATOR_API}/config`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        method: 'GET'
+        // Don't send Content-Type header for GET requests
       });
       
       if (response.ok) {
@@ -354,11 +352,21 @@ interface SiteConfig {
           actualResult = result.payload;
         }
         
+        if (!actualResult) {
+          logger.error('No response data from translation request');
+          showErrorNotification('Translation service not responding. Please try again.');
+          return;
+        }
+        
         if (actualResult.error) {
-          logger.warn(actualResult.error);
+          logger.warn('Translation error:', actualResult.error);
           // Show notification to user if daily limit reached
           if (actualResult.error.includes('daily limit') || actualResult.error.includes('50 words')) {
             showLimitNotification();
+          } else if (actualResult.error.includes('not properly initialized')) {
+            showErrorNotification('Extension needs to be reinitialized. Please reload the extension.');
+          } else {
+            showErrorNotification(`Translation failed: ${actualResult.error}`);
           }
         }
         

@@ -195,6 +195,9 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
     case 'GENERATE_CONTEXT':
       return generateContext(request.prompt);
       
+    case 'GET_CONTEXT':
+      return getContext(request.word, request.translation, request.language, request.sentence);
+      
     case 'GET_LEARNING_STATS':
       return getLearningStats();
       
@@ -203,9 +206,14 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
       
     case 'DEBUG_RESET_AUTH':
       // Debug: Clear and reinitialize auth
-      await InstallationAuth.clear();
-      await InstallationAuth.initialize();
-      return { success: true, message: 'Auth reset and reinitialized' };
+      try {
+        await InstallationAuth.clear();
+        await InstallationAuth.initialize();
+        return { success: true, message: 'Auth reset and reinitialized' };
+      } catch (error) {
+        logger.error('Failed to reset auth:', error);
+        return { success: false, error: error.message };
+      }
       
     default:
       throw new Error(`Unknown message type: ${request.type}`);
@@ -387,6 +395,33 @@ function getCacheStats(): { cacheSize: number; hitRate: number; hits: number; mi
     hits: state.cacheStats.hits,
     misses: state.cacheStats.misses
   };
+}
+
+// Get context for a word
+async function getContext(word: string, translation: string, language: string, sentence?: string): Promise<any> {
+  try {
+    // Dynamically import the translator module
+    const { translator } = await import('../lib/simpleTranslator');
+    
+    // Validate inputs
+    const validLanguage = validator.validateLanguage(language);
+    const validWord = validator.validateWord(word);
+    
+    if (!validWord) {
+      return { context: null, error: 'Invalid word' };
+    }
+    
+    // Get context using the new method
+    const context = await translator.getContext(validWord, translation, validLanguage, sentence);
+    
+    return { context };
+  } catch (error) {
+    logger.error('Context fetch error:', error);
+    return { 
+      context: null, 
+      error: error instanceof Error ? error.message : 'Context fetch failed'
+    };
+  }
 }
 
 // Clean up old statistics

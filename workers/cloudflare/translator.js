@@ -116,6 +116,31 @@ export default {
         return response;
       }
 
+      // Route: /context (POST, with auth)
+      if (pathname === '/context' && request.method === 'POST') {
+        // Verify authentication
+        const authResult = await verifyAuthentication(request, env);
+        if (authResult) {
+          return new Response(JSON.stringify({ error: authResult.message }), { 
+            status: authResult.status, 
+            headers: { ...responseHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Process context-only request
+        const response = await handleContextOnly(request, env, ctx);
+        
+        // Add performance header
+        response.headers.set('X-Response-Time', `${Date.now() - startTime}ms`);
+        
+        // Add security headers
+        Object.entries(responseHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        
+        return response;
+      }
+
       // Route: /installations/register (POST, no auth)
       if (pathname === '/installations/register' && request.method === 'POST') {
         const response = await handleInstallationRegistration(request, env, ctx);
@@ -268,8 +293,18 @@ async function handleTranslateWithContext(request, env, ctx) {
       
       if (cached) {
         try {
-          translations[word] = JSON.parse(cached);
-          cacheStats.hits++;
+          const cachedData = JSON.parse(cached);
+          // Check if cached data has context (new format) or is just a string (old format)
+          if (typeof cachedData === 'string' || !cachedData.pronunciation) {
+            // Old format - need to get context
+            wordsToTranslate.push(word);
+            translations[word] = typeof cachedData === 'string' ? cachedData : cachedData.translation;
+            cacheStats.misses++; // Count as miss since we need context
+          } else {
+            // New format with context
+            translations[word] = cachedData;
+            cacheStats.hits++;
+          }
         } catch {
           wordsToTranslate.push(word);
           cacheStats.misses++;
@@ -364,25 +399,31 @@ async function handleTranslateWithContext(request, env, ctx) {
 
       // Get context for translations if enabled
       let contextData = {};
-      if (enableContext && env.CLAUDE_API_KEY) {
+      if (enableContext && env.CLAUDE_API_KEY && wordsToTranslate.length > 0) {
+        // Prepare all translations for context generation
+        const allTranslations = {};
+        for (const word of wordsToTranslate) {
+          allTranslations[word] = apiTranslations[word] || translations[word];
+        }
+        
         contextData = await getContextForWords(
           wordsToTranslate,
-          apiTranslations,
+          allTranslations,
           targetLanguage,
           env,
           ctx
         );
       }
 
-      // Cache successful translations with context
+      // Update translations with context and cache them
       const cachePromises = [];
       for (const word of wordsToTranslate) {
-        const translation = apiTranslations[word];
+        const translation = apiTranslations[word] || translations[word];
         const context = contextData[word];
         
         if (translation) {
           const combined = context ? {
-            translation: translation,
+            translation: typeof translation === 'string' ? translation : translation.translation || translation,
             pronunciation: context.pronunciation,
             meaning: context.meaning,
             example: context.example
@@ -503,6 +544,12 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
 async function getContextForWords(words, translations, targetLanguage, env, ctx) {
   const contexts = {};
   
+  logInfo('Getting context for words', {
+    wordCount: words.length,
+    words: words,
+    hasClaudeKey: !!env.CLAUDE_API_KEY
+  });
+  
   // Create batch prompt for Claude
   const wordsToAnalyze = words.map(word => `"${word}" → "${translations[word] || word}"`).join('\n');
   const prompt = `You are helping English speakers learn ${targetLanguage}. For each English word and its ${targetLanguage} translation below, provide:
@@ -535,7 +582,7 @@ Respond with valid JSON only, no markdown or additional text.`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-3-5-haiku-latest',
         max_tokens: 1024,
         messages: [
           {
@@ -548,22 +595,34 @@ Respond with valid JSON only, no markdown or additional text.`;
     });
 
     if (!claudeResponse.ok) {
-      logError('Claude API error', new Error(`API returned ${claudeResponse.status}`));
+      const errorText = await claudeResponse.text();
+      logError('Claude API error', new Error(`API returned ${claudeResponse.status}: ${errorText}`));
       return contexts;
     }
 
     const claudeData = await claudeResponse.json();
+    logInfo('Claude API response received', {
+      hasContent: !!claudeData.content,
+      contentLength: claudeData.content?.[0]?.text?.length
+    });
     
     try {
       const content = claudeData.content[0].text;
       const contextData = JSON.parse(content);
       Object.assign(contexts, contextData);
+      logInfo('Successfully parsed context data', {
+        contextCount: Object.keys(contextData).length
+      });
     } catch (error) {
       logError('Failed to parse Claude response', error);
     }
   } catch (error) {
     logError('Context generation error', error);
   }
+  
+  logInfo('Returning contexts', {
+    contextCount: Object.keys(contexts).length
+  });
   
   return contexts;
 }
@@ -806,4 +865,184 @@ async function generateRefreshToken(installationId, env) {
   );
   
   return token;
+}
+
+/**
+ * Handle context-only requests
+ */
+async function handleContextOnly(request, env, ctx) {
+  const startTime = Date.now();
+  
+  try {
+    const body = await request.json();
+    const { word, translation, targetLanguage, sentence } = body;
+    
+    // Extract installation ID from auth headers
+    const installationId = request.headers.get('X-Installation-Id');
+    
+    // Validate inputs
+    if (!word || !translation || !targetLanguage) {
+      return new Response(JSON.stringify({ 
+        error: 'Missing required fields: word, translation, targetLanguage' 
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // Check context cache first
+    const cacheKey = `context:${targetLanguage}:${word.toLowerCase().trim()}`;
+    const cached = await env.TRANSLATION_CACHE.get(cacheKey);
+    
+    if (cached) {
+      logInfo('Context cache hit', { word, targetLanguage });
+      return new Response(JSON.stringify({ 
+        context: JSON.parse(cached),
+        cached: true
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // Apply rate limiting for AI context generation
+    if (env.AI_RATE_LIMITER) {
+      const aiRateLimit = await env.AI_RATE_LIMITER.limit({
+        key: `${installationId}:context`
+      });
+      
+      if (!aiRateLimit.success) {
+        return new Response(JSON.stringify({
+          error: 'AI context rate limit exceeded',
+          context: null
+        }), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-AI-RateLimit-Limit-Hourly': '20',
+            'X-AI-RateLimit-Remaining-Hourly': (aiRateLimit.remaining || 0).toString(),
+            'Retry-After': '3600'
+          }
+        });
+      }
+    }
+    
+    // Generate context using Claude
+    if (!env.CLAUDE_API_KEY) {
+      return new Response(JSON.stringify({ 
+        context: null,
+        error: 'Context generation not available'
+      }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const context = await generateContextForWord(
+      word,
+      translation,
+      targetLanguage,
+      sentence,
+      env
+    );
+    
+    // Cache the context
+    if (context) {
+      ctx.waitUntil(
+        env.TRANSLATION_CACHE.put(
+          cacheKey, 
+          JSON.stringify(context), 
+          { expirationTtl: CACHE_TTL.TRANSLATION }
+        )
+      );
+    }
+    
+    logInfo('Context generated', {
+      installationId,
+      word,
+      targetLanguage,
+      processingTimeMs: Date.now() - startTime
+    });
+    
+    return new Response(JSON.stringify({ 
+      context: context || null
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    
+  } catch (error) {
+    logError('Context generation error', error);
+    return new Response(JSON.stringify({ 
+      error: 'Context generation failed',
+      context: null
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+/**
+ * Generate context for a single word
+ */
+async function generateContextForWord(word, translation, targetLanguage, sentence, env) {
+  const languageNames = {
+    es: 'Spanish',
+    fr: 'French', 
+    de: 'German'
+  };
+  
+  const prompt = `You are a language learning assistant. Generate helpful context for learning this word.
+
+Word: "${word}" (English)
+Translation: "${translation}" (${languageNames[targetLanguage] || targetLanguage})
+${sentence ? `Context sentence: "${sentence}"` : ''}
+
+Provide a JSON response with:
+1. pronunciation: How to pronounce the ${languageNames[targetLanguage] || targetLanguage} word (e.g., "OH-lah" for "hola")
+2. meaning: A brief explanation of the word's meaning and usage in English (max 15 words)
+3. example: A simple example sentence in ${languageNames[targetLanguage] || targetLanguage} using this word (max 10 words)
+
+Response format:
+{
+  "pronunciation": "...",
+  "meaning": "...",
+  "example": "..."
+}`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': env.CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 200,
+        temperature: 0.3,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Claude API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.content[0].text;
+    
+    // Parse the JSON response
+    const context = JSON.parse(content);
+    
+    return context;
+  } catch (error) {
+    logError('Failed to generate context', error);
+    return null;
+  }
 }

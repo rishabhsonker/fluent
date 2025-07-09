@@ -261,7 +261,7 @@ export class SimpleTranslator {
             words, 
             targetLanguage: langCode, 
             apiKey,
-            enableContext: true // Always get context with translations
+            enableContext: false // Get translations only, fetch context on-demand
           })
         },
         {
@@ -355,6 +355,92 @@ export class SimpleTranslator {
     translationCache.clear();
     await storage.remove(STORAGE_KEYS.TRANSLATION_CACHE);
     this.stats = { hits: 0, misses: 0, apiCalls: 0 };
+  }
+  
+  // Fetch context for a single word-translation pair
+  async getContext(
+    word: string,
+    translation: string,
+    targetLanguage: string,
+    sentence?: string
+  ): Promise<{ pronunciation?: string; meaning?: string; example?: string } | null> {
+    const validLanguage = validator.validateLanguage(targetLanguage) as LanguageCode;
+    
+    // Check memory cache first
+    const cacheKey = `context:${validLanguage}:${word.toLowerCase()}`;
+    const cached = translationCache.getContext(word, validLanguage);
+    if (cached) {
+      return cached;
+    }
+    
+    // Check storage cache
+    try {
+      const stored = await storage.get(STORAGE_KEYS.CONTEXT_CACHE) as any;
+      if (stored?.contexts?.[cacheKey]) {
+        // Add to memory cache
+        const context = stored.contexts[cacheKey];
+        translationCache.setContext(word, validLanguage, context);
+        return context;
+      }
+    } catch (error) {
+      logger.error('Context cache read error:', error);
+    }
+    
+    // Fetch from API
+    try {
+      const authHeaders = await InstallationAuth.getAuthHeaders();
+      const langCode = SUPPORTED_LANGUAGES[targetLanguage]?.code || targetLanguage;
+      
+      const response = await fetchWithRetry(
+        `${API_CONFIG.TRANSLATOR_API}/context`,
+        {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...authHeaders
+          },
+          body: JSON.stringify({
+            word,
+            translation,
+            targetLanguage: langCode,
+            sentence
+          })
+        },
+        {
+          maxRetries: 2,
+          onRetry: (attempt, error) => {
+            logger.warn(`Context retry attempt ${attempt}`, { error: error.message });
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        logger.error('Context API error:', { status: response.status });
+        return null;
+      }
+      
+      const data = await response.json();
+      const context = data.context || null;
+      
+      if (context) {
+        // Cache the context
+        translationCache.setContext(word, validLanguage, context);
+        
+        // Update storage cache
+        try {
+          const stored = await storage.get(STORAGE_KEYS.CONTEXT_CACHE) || { contexts: {} };
+          stored.contexts[cacheKey] = context;
+          await storage.set(STORAGE_KEYS.CONTEXT_CACHE, stored);
+        } catch (error) {
+          logger.error('Context cache write error:', error);
+        }
+      }
+      
+      return context;
+    } catch (error) {
+      logger.error('Failed to fetch context:', error);
+      return null;
+    }
   }
 }
 

@@ -232,6 +232,13 @@ export class MemoryCache<T> {
 
 // Specialized translation cache with language-aware keys
 export class TranslationMemoryCache extends MemoryCache<string> {
+  private contextCache: MemoryCache<any>;
+  
+  constructor(maxSize: number = 1000, defaultTTLMinutes: number = 30) {
+    super(maxSize, defaultTTLMinutes);
+    this.contextCache = new MemoryCache(500, 60); // Context cache with 1 hour TTL
+  }
+  
   /**
    * Get translation with language-aware key
    */
@@ -246,6 +253,30 @@ export class TranslationMemoryCache extends MemoryCache<string> {
   setTranslation(word: string, language: string, translation: string): void {
     const key = this.makeKey(word, language);
     this.set(key, translation);
+  }
+  
+  /**
+   * Get context with language-aware key
+   */
+  getContext(word: string, language: string): any {
+    const key = `context:${this.makeKey(word, language)}`;
+    return this.contextCache.get(key);
+  }
+  
+  /**
+   * Set context with language-aware key
+   */
+  setContext(word: string, language: string, context: any): void {
+    const key = `context:${this.makeKey(word, language)}`;
+    this.contextCache.set(key, context);
+  }
+  
+  /**
+   * Clear both translation and context caches
+   */
+  clear(): void {
+    super.clear();
+    this.contextCache.clear();
   }
   
   /**

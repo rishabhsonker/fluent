@@ -537,6 +537,45 @@ body span.fluent-word:hover,
   bottom: 100px !important;
 }
 
+/* Skeleton loading states */
+.fluent-skeleton {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  background-size: 200% 100%;
+  animation: fluent-skeleton-pulse 1.5s ease-in-out infinite;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.fluent-skeleton-text {
+  height: 1em;
+  width: 100%;
+  min-width: 120px;
+}
+
+.fluent-skeleton-full {
+  min-width: 200px;
+}
+
+@keyframes fluent-skeleton-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.fluent-tooltip-loading {
+  min-height: 1.2em;
+}
+
 /* Print styles */
 @media print {
   .fluent-word {

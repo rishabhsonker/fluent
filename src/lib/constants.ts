@@ -64,6 +64,7 @@ interface StorageKeys {
   SITE_SETTINGS: string;
   WORD_PROGRESS: string;
   TRANSLATION_CACHE: string;
+  CONTEXT_CACHE: string;
   DAILY_STATS: string;
 }
 
@@ -217,6 +218,7 @@ export const STORAGE_KEYS: StorageKeys = {
   SITE_SETTINGS: 'fluent_site_settings',
   WORD_PROGRESS: 'fluent_word_progress',
   TRANSLATION_CACHE: 'fluent_translation_cache',
+  CONTEXT_CACHE: 'fluent_context_cache',
   DAILY_STATS: 'fluent_daily_stats'
 } as const;
 

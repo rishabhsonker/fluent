@@ -253,8 +253,15 @@ export class Tooltip {
         }
       }
       
-      // Update content (now async)
-      await this.updateContent(original, translation, language, pronunciation, meaning, example);
+      // Update content (now async) - pass undefined for context fields to show loading states
+      await this.updateContent(
+        original, 
+        translation, 
+        language, 
+        pronunciation !== undefined ? pronunciation : undefined,
+        meaning !== undefined ? meaning : undefined,
+        example !== undefined ? example : undefined
+      );
       
       // Show and position
       this.show();
@@ -281,10 +288,16 @@ export class Tooltip {
     // 1. Show translated word (larger, prominent)
     if (translationElement) translationElement.textContent = translation;
     
-    // 2. Show pronunciation of translated word (smaller font)
+    // 2. Show pronunciation or loading state
     if (pronunciationElement instanceof HTMLElement) {
       if (pronunciation) {
         pronunciationElement.textContent = pronunciation;
+        pronunciationElement.classList.remove('fluent-tooltip-loading');
+        pronunciationElement.style.display = 'block';
+      } else if (pronunciation === undefined) {
+        // Show loading skeleton
+        pronunciationElement.innerHTML = '<span class="fluent-skeleton fluent-skeleton-text"></span>';
+        pronunciationElement.classList.add('fluent-tooltip-loading');
         pronunciationElement.style.display = 'block';
       } else {
         pronunciationElement.style.display = 'none';
@@ -297,25 +310,43 @@ export class Tooltip {
       wordMappingElement.style.display = 'block';
     }
     
-    // 3. Show meaning in English
+    // 3. Show meaning or loading state
     if (meaningElement instanceof HTMLElement) {
       if (meaning) {
         meaningElement.textContent = meaning;
+        meaningElement.classList.remove('fluent-tooltip-loading');
+        meaningElement.style.display = 'block';
+      } else if (meaning === undefined) {
+        // Show loading skeleton with fallback text
+        meaningElement.innerHTML = `<span class="fluent-skeleton fluent-skeleton-text">${original} = ${translation}</span>`;
+        meaningElement.classList.add('fluent-tooltip-loading');
         meaningElement.style.display = 'block';
       } else {
         meaningElement.textContent = `${original} = ${translation}`;
+        meaningElement.classList.remove('fluent-tooltip-loading');
         meaningElement.style.display = 'block';
       }
     }
     
-    // 4. Show contextual example in target language
+    // 4. Show contextual example or loading state
     if (exampleElement instanceof HTMLElement) {
       if (example) {
         exampleElement.textContent = example;
+        exampleElement.classList.remove('fluent-tooltip-loading');
+        exampleElement.style.display = 'block';
+      } else if (example === undefined) {
+        // Show loading skeleton
+        exampleElement.innerHTML = '<span class="fluent-skeleton fluent-skeleton-text fluent-skeleton-full"></span>';
+        exampleElement.classList.add('fluent-tooltip-loading');
         exampleElement.style.display = 'block';
       } else {
         exampleElement.style.display = 'none';
       }
+    }
+    
+    // Fetch context asynchronously if not provided
+    if (pronunciation === undefined || meaning === undefined || example === undefined) {
+      this.fetchContextAsync(original, translation, language);
     }
     
     // Update progress if storage is available
@@ -371,6 +402,54 @@ export class Tooltip {
   private getCurrentLanguage(): LanguageCode {
     // This would normally come from settings
     return this.currentLanguage || 'spanish';
+  }
+  
+  private async fetchContextAsync(original: string, translation: string, language: LanguageCode): Promise<void> {
+    if (!this.currentTarget || !this.element) return;
+    
+    try {
+      // Get the sentence context
+      const sentence = this.getWordContext(this.currentTarget);
+      
+      // Fetch context from background script
+      const response = await chrome.runtime.sendMessage({
+        type: 'GET_CONTEXT',
+        word: original,
+        translation: translation,
+        language: language,
+        sentence: sentence
+      });
+      
+      if (response && response.context && this.isVisible && this.currentTarget) {
+        // Update content with fetched context
+        const currentOriginal = this.currentTarget.getAttribute('data-original');
+        const currentTranslation = this.currentTarget.getAttribute('data-translation');
+        
+        // Only update if still showing the same word
+        if (currentOriginal === original && currentTranslation === translation) {
+          await this.updateContent(
+            original,
+            translation,
+            language,
+            response.context.pronunciation || null,
+            response.context.meaning || null,
+            response.context.example || null
+          );
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to fetch context:', error);
+      // Remove loading states on error
+      if (this.element) {
+        const loadingElements = this.element.querySelectorAll('.fluent-tooltip-loading');
+        loadingElements.forEach(el => {
+          el.classList.remove('fluent-tooltip-loading');
+          if (el.querySelector('.fluent-skeleton')) {
+            el.innerHTML = el.textContent || '';
+          }
+        });
+      }
+    }
   }
 
   private getLanguageInfo(language: LanguageCode): LanguageInfo {
