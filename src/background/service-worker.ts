@@ -81,6 +81,9 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
   
   // Load settings
   await loadSettings();
+  
+  // Log loaded settings for debugging
+  logger.info('Settings loaded on install/update:', state.settings);
 });
 
 // Load settings from storage
@@ -202,6 +205,12 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
 
 // Get settings for a specific tab
 async function getSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<any> {
+  // Ensure settings are loaded
+  if (!state.settings) {
+    logger.warn('Settings not loaded in state, reloading from storage');
+    await loadSettings();
+  }
+  
   if (!tab || !tab.url) {
     return { settings: state.settings, siteEnabled: true };
   }
@@ -217,6 +226,13 @@ async function getSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<any>
   const now = Date.now();
   const globallyPaused = state.settings?.pausedUntil && state.settings.pausedUntil > now;
   
+  logger.debug('Returning settings for tab:', {
+    settings: state.settings,
+    siteSettings,
+    siteEnabled: siteEnabled && !globallyPaused,
+    hostname
+  });
+  
   return {
     settings: { ...state.settings, ...siteSettings },
     siteEnabled: siteEnabled && !globallyPaused,
@@ -226,9 +242,19 @@ async function getSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<any>
 
 // Update global settings
 async function updateSettings(newSettings: Partial<UserSettings>): Promise<{ success: boolean }> {
+  // Ensure we have current settings loaded
+  if (!state.settings) {
+    await loadSettings();
+  }
+  
+  // Merge with existing settings
+  const mergedSettings = { ...state.settings, ...newSettings };
+  
   // Validate settings
-  const validated = validator.validateSettings({ ...state.settings, ...newSettings });
+  const validated = validator.validateSettings(mergedSettings);
   state.settings = validated;
+  
+  logger.info('Updating settings:', validated);
   
   await chrome.storage.sync.set({
     [STORAGE_KEYS.USER_SETTINGS]: state.settings
@@ -358,6 +384,17 @@ async function cleanupOldStats(): Promise<void> {
 
 // DEBUG: Log when service worker starts
 logger.info('Service Worker starting...');
+
+// Listen for storage changes to keep state in sync
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'sync' && changes[STORAGE_KEYS.USER_SETTINGS]) {
+    const newSettings = changes[STORAGE_KEYS.USER_SETTINGS].newValue;
+    if (newSettings) {
+      state.settings = validator.validateSettings(newSettings);
+      logger.info('Settings updated from storage change:', state.settings);
+    }
+  }
+});
 
 // Handle extension icon click
 chrome.action.onClicked.addListener(async (tab: chrome.tabs.Tab) => {
@@ -604,6 +641,16 @@ async function getRateLimits(): Promise<any> {
     };
   }
 }
+
+// Initialize settings on service worker startup
+(async () => {
+  try {
+    await loadSettings();
+    logger.info('Service worker initialized with settings:', state.settings);
+  } catch (error) {
+    logger.error('Failed to initialize service worker settings:', error);
+  }
+})();
 
 // Export for testing
 if (typeof module !== 'undefined' && module.exports) {

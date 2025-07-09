@@ -184,7 +184,8 @@ export class FluentStorage {
   // User settings
   async getSettings(): Promise<UserSettings> {
     const settings = await this.storage.get<UserSettings>(STORAGE_KEYS.USER_SETTINGS, DEFAULT_SETTINGS as UserSettings);
-    return settings || DEFAULT_SETTINGS as UserSettings;
+    // Ensure we merge with defaults to handle missing properties
+    return { ...DEFAULT_SETTINGS, ...settings } as UserSettings;
   }
 
   async updateSettings(updates: Partial<UserSettings>): Promise<boolean> {

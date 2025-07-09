@@ -277,7 +277,9 @@ interface SiteConfig {
         
         // Get user settings
         const settings = await storage.getSettings();
+        logger.debug('Loaded settings in content script:', settings);
         const targetLanguage = (settings.targetLanguage || 'spanish') as LanguageCode;
+        logger.debug('Using target language:', targetLanguage);
         
         // Inject storage and language into replacer for spaced repetition
         replacerInstance.storage = storage;
@@ -483,9 +485,22 @@ interface SiteConfig {
       let settings;
       try {
         settings = await storage.getSettings();
+        logger.info('Content script loaded settings:', settings);
       } catch (error) {
         logger.error('Failed to load settings', error);
-        settings = { targetLanguage: 'spanish', enabled: true }; // Use defaults
+        // Try to get settings from background script as fallback
+        try {
+          const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+          if (response && response.settings) {
+            settings = response.settings;
+            logger.info('Got settings from background script:', settings);
+          } else {
+            settings = { targetLanguage: 'spanish', enabled: true }; // Use defaults
+          }
+        } catch (bgError) {
+          logger.error('Failed to get settings from background:', bgError);
+          settings = { targetLanguage: 'spanish', enabled: true }; // Use defaults
+        }
       }
       
       // Initialize Tooltip with error boundary
