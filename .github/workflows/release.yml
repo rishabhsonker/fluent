@@ -24,33 +24,19 @@ jobs:
         run: npm run package
       
       - name: Create Release
-        uses: actions/create-release@v1
-        id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Fluent ${{ github.ref_name }}
-          body: |
-            Chrome extension release ${{ github.ref_name }}
-            
-            ## Installation
-            1. Download `fluent.zip` from the assets below
-            2. Open Chrome and go to `chrome://extensions/`
-            3. Enable "Developer mode"
-            4. Drag and drop `fluent.zip` onto the page
-            
-            ## What's New
-            - See commit history for changes
-          draft: false
-          prerelease: false
-      
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./fluent.zip
-          asset_name: fluent-${{ github.ref_name }}.zip
-          asset_content_type: application/zip
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Fluent ${{ github.ref_name }}" \
+            --notes "Chrome extension release ${{ github.ref_name }}
+          
+          ## Installation
+          1. Download \`fluent-${{ github.ref_name }}.zip\` from the assets below
+          2. Open Chrome and go to \`chrome://extensions/\`
+          3. Enable \"Developer mode\"
+          4. Drag and drop the zip file onto the page
+          
+          ## What's New
+          - See [commit history](https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 ${{ github.ref_name }}^)...${{ github.ref_name }}) for changes" \
+            ./fluent.zip#fluent-${{ github.ref_name }}.zip
