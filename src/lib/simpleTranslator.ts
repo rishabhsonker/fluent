@@ -9,7 +9,9 @@ import { logger } from './logger';
 import { costGuard } from './costGuard';
 import { secureCrypto } from './secureCrypto';
 import { ExtensionAuthenticator } from './auth';
+import { InstallationAuth } from './installationAuth';
 import { offlineManager } from './offlineManager';
+import { translationCache } from './memoryCache';
 import type { 
   Translation, 
   TranslationResult, 
@@ -23,8 +25,6 @@ interface TranslatorOptions {
 }
 
 export class SimpleTranslator {
-  private memoryCache: Map<string, string>;
-  private maxMemoryCacheSize: number;
   private stats: {
     hits: number;
     misses: number;
@@ -32,10 +32,6 @@ export class SimpleTranslator {
   };
 
   constructor() {
-    // Simple 2-tier cache
-    this.memoryCache = new Map();
-    this.maxMemoryCacheSize = CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES;
-    
     // Stats for monitoring
     this.stats = {
       hits: 0,
@@ -43,8 +39,13 @@ export class SimpleTranslator {
       apiCalls: 0
     };
     
-    // Initialize
+    // Initialize by loading from storage
     this.loadStorageCache();
+    
+    // Set up periodic cleanup
+    setInterval(() => {
+      translationCache.cleanup();
+    }, 5 * 60 * 1000); // Every 5 minutes
   }
   
   // Load recent translations from storage
@@ -52,12 +53,17 @@ export class SimpleTranslator {
     try {
       const stored = await storage.get(STORAGE_KEYS.TRANSLATION_CACHE) as StorageCache | null;
       if (stored?.translations) {
-        // Load most recent 100 into memory
-        Object.entries(stored.translations)
-          .slice(-100)
-          .forEach(([key, value]) => {
-            this.memoryCache.set(key, value);
-          });
+        // Load recent translations into memory cache
+        const entries = Object.entries(stored.translations);
+        const recentEntries = entries.slice(-500); // Load last 500
+        
+        recentEntries.forEach(([key, value]) => {
+          const [language, ...wordParts] = key.split(':');
+          const word = wordParts.join(':');
+          translationCache.setTranslation(word, language, value);
+        });
+        
+        logger.info('Loaded translations from storage', { count: recentEntries.length });
       }
     } catch (error) {
       logger.error('Failed to load cache:', error);
@@ -134,17 +140,22 @@ export class SimpleTranslator {
   
   // Get from 2-tier cache
   private async getFromCache(key: string): Promise<string | null> {
-    // L1: Memory cache
-    if (this.memoryCache.has(key)) {
-      return this.memoryCache.get(key)!;
+    // Parse key to get language and word
+    const [language, ...wordParts] = key.split(':');
+    const word = wordParts.join(':');
+    
+    // L1: Memory cache (instant)
+    const memCached = translationCache.getTranslation(word, language);
+    if (memCached) {
+      return memCached;
     }
     
     // L2: Storage cache
     try {
       const stored = await storage.get(STORAGE_KEYS.TRANSLATION_CACHE) as StorageCache | null;
       if (stored?.translations?.[key]) {
-        // Add to memory cache
-        this.updateMemoryCache(key, stored.translations[key]);
+        // Add to memory cache for next time
+        translationCache.setTranslation(word, language, stored.translations[key]);
         return stored.translations[key];
       }
     } catch (error) {
@@ -156,8 +167,12 @@ export class SimpleTranslator {
   
   // Update both cache tiers
   private async updateCache(key: string, value: string): Promise<void> {
+    // Parse key to get language and word
+    const [language, ...wordParts] = key.split(':');
+    const word = wordParts.join(':');
+    
     // Update memory cache
-    this.updateMemoryCache(key, value);
+    translationCache.setTranslation(word, language, value);
     
     // Update storage cache
     try {
@@ -184,23 +199,6 @@ export class SimpleTranslator {
     }
   }
   
-  // Update memory cache with LRU eviction
-  private updateMemoryCache(key: string, value: string): void {
-    // Delete and re-add to move to end (LRU)
-    if (this.memoryCache.has(key)) {
-      this.memoryCache.delete(key);
-    }
-    
-    // Evict oldest if at capacity
-    if (this.memoryCache.size >= this.maxMemoryCacheSize) {
-      const firstKey = this.memoryCache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.memoryCache.delete(firstKey);
-      }
-    }
-    
-    this.memoryCache.set(key, value);
-  }
   
   // Fetch from API
   private async fetchTranslations(
@@ -220,8 +218,15 @@ export class SimpleTranslator {
     return await rateLimiter.withRateLimit('translation', identifier, async () => {
       // No mock mode in production
       
-      // Get authentication headers
-      const authHeaders = await ExtensionAuthenticator.generateAuthHeaders();
+      // Get authentication headers - try new installation auth first
+      let authHeaders;
+      try {
+        authHeaders = await InstallationAuth.getAuthHeaders();
+      } catch (error) {
+        // Fallback to old auth for backward compatibility
+        logger.warn('Installation auth failed, using legacy auth', error);
+        authHeaders = await ExtensionAuthenticator.generateAuthHeaders();
+      }
       
       // Convert language name to code (e.g., 'spanish' -> 'es')
       const langCode = SUPPORTED_LANGUAGES[targetLanguage]?.code || targetLanguage;
@@ -263,6 +268,22 @@ export class SimpleTranslator {
       // Ensure we have translations
       if (!data.translations) {
         logger.error('No translations in response!', data);
+      }
+      
+      // Store rate limit info from response headers or metadata
+      if (data.metadata?.limits || response.headers.get('X-RateLimit-Remaining-Hourly')) {
+        const rateLimitInfo = {
+          translationHourlyRemaining: parseInt(response.headers.get('X-RateLimit-Remaining-Hourly') || '100'),
+          translationDailyRemaining: parseInt(response.headers.get('X-RateLimit-Remaining-Daily') || '1000'),
+          aiHourlyRemaining: parseInt(response.headers.get('X-AI-RateLimit-Remaining-Hourly') || '10'),
+          aiDailyRemaining: parseInt(response.headers.get('X-AI-RateLimit-Remaining-Daily') || '100'),
+          lastChecked: Date.now()
+        };
+        
+        // Store in local storage for popup to access
+        chrome.storage.local.set({ rateLimitInfo }).catch(err => 
+          logger.error('Failed to store rate limit info:', err)
+        );
       }
       
       // Record cost
@@ -317,16 +338,18 @@ export class SimpleTranslator {
   // Get stats
   getStats(): TranslationStats {
     const total = this.stats.hits + this.stats.misses;
+    const cacheStats = translationCache.getStats();
     return {
       ...this.stats,
       hitRate: total > 0 ? this.stats.hits / total : 0,
-      memoryCacheSize: this.memoryCache.size
+      memoryCacheSize: cacheStats.size,
+      memoryCacheHitRate: cacheStats.hits / (cacheStats.hits + cacheStats.misses) || 0
     };
   }
   
   // Clear cache
   async clearCache(): Promise<void> {
-    this.memoryCache.clear();
+    translationCache.clear();
     await storage.remove(STORAGE_KEYS.TRANSLATION_CACHE);
     this.stats = { hits: 0, misses: 0, apiCalls: 0 };
   }

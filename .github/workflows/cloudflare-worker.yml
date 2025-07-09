@@ -59,12 +59,23 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
+    - name: Check for Cloudflare API Token
+      run: |
+        if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+          echo "::error::CLOUDFLARE_API_TOKEN secret is not set. Please add it to your repository secrets."
+          echo "See workers/cloudflare/DEPLOYMENT.md for instructions."
+          exit 1
+        fi
+        echo "✅ CLOUDFLARE_API_TOKEN is configured"
+    
     - name: Deploy to Cloudflare Workers
       uses: cloudflare/wrangler-action@v3
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         workingDirectory: workers/cloudflare
-        command: deploy
+        command: deploy --env production
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         
     - name: Upload site configuration
       if: success()
@@ -73,7 +84,7 @@ jobs:
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       run: |
         # Only upload if site-config.json has changed
-        if git diff --name-only HEAD~1 HEAD | grep -q "site-config.json"; then
+        if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q "site-config.json"; then
           echo "Site configuration changed, uploading to KV..."
           node manage-sites.js upload
         else

@@ -7,6 +7,7 @@ import { logger } from '../lib/logger.js';
 import { serviceWorkerSecurityManager as securityManager } from '../lib/securityServiceWorker.js';
 import { secureCrypto } from '../lib/secureCrypto.js';
 import { ExtensionAuthenticator } from '../lib/auth.js';
+import { InstallationAuth } from '../lib/installationAuth.js';
 import { contentScriptManager } from './contentScriptManager.js';
 import { offlineManager } from '../lib/offlineManager.js';
 import type { UserSettings, SiteSettings, LanguageCode } from '../types';
@@ -53,20 +54,29 @@ const state: ServiceWorkerState = {
 chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledDetails) => {
   logger.info('Extension installed', details.reason);
   
-  // Set default settings
+  // Set default settings and initialize installation auth
   if (details.reason === 'install') {
     await chrome.storage.sync.set({
       [STORAGE_KEYS.USER_SETTINGS]: DEFAULT_SETTINGS,
       [STORAGE_KEYS.SITE_SETTINGS]: {}
     });
     
-    // Initialize authentication
+    // Initialize installation-based authentication
+    await InstallationAuth.initialize();
+    
+    // Keep old authenticator for backward compatibility during transition
     await ExtensionAuthenticator.initialize();
   }
   
   // Migrate API keys from old storage on update
   if (details.reason === 'update') {
     await secureCrypto.migrateFromOldStorage();
+    
+    // Initialize installation auth if not already done
+    const installationData = await InstallationAuth.getInstallationData();
+    if (!installationData) {
+      await InstallationAuth.initialize();
+    }
   }
   
   // Load settings
@@ -181,6 +191,9 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
       
     case 'GET_LEARNING_STATS':
       return getLearningStats();
+      
+    case 'GET_RATE_LIMITS':
+      return getRateLimits();
       
     default:
       throw new Error(`Unknown message type: ${request.type}`);
@@ -541,6 +554,52 @@ async function getLearningStats(): Promise<{ stats: any }> {
         wordsDueForReview: 0,
         averageMastery: 0,
         todayReviews: 0
+      }
+    };
+  }
+}
+
+// Get rate limit information from last API response or storage
+async function getRateLimits(): Promise<any> {
+  try {
+    // Get cached rate limit info
+    const result = await chrome.storage.local.get(['rateLimitInfo']);
+    const cached = result.rateLimitInfo;
+    
+    // Calculate time until reset
+    const now = Date.now();
+    const hourlyResetTime = cached?.lastChecked ? 
+      cached.lastChecked + (60 * 60 * 1000) : now + (60 * 60 * 1000);
+    const dailyResetTime = cached?.lastChecked ? 
+      cached.lastChecked + (24 * 60 * 60 * 1000) : now + (24 * 60 * 60 * 1000);
+    
+    const limits = {
+      translationLimits: {
+        hourlyRemaining: cached?.translationHourlyRemaining ?? 100,
+        hourlyLimit: 100,
+        dailyRemaining: cached?.translationDailyRemaining ?? 1000,
+        dailyLimit: 1000
+      },
+      aiLimits: {
+        hourlyRemaining: cached?.aiHourlyRemaining ?? 10,
+        hourlyLimit: 10,
+        dailyRemaining: cached?.aiDailyRemaining ?? 100,
+        dailyLimit: 100
+      },
+      nextResetIn: {
+        hourly: Math.max(0, Math.floor((hourlyResetTime - now) / (60 * 1000))), // minutes
+        daily: Math.max(0, Math.floor((dailyResetTime - now) / (60 * 60 * 1000))) // hours
+      }
+    };
+    
+    return { limits };
+  } catch (error) {
+    logger.error('Failed to get rate limits:', error);
+    return {
+      limits: {
+        translationLimits: { hourlyRemaining: 100, hourlyLimit: 100, dailyRemaining: 1000, dailyLimit: 1000 },
+        aiLimits: { hourlyRemaining: 10, hourlyLimit: 10, dailyRemaining: 100, dailyLimit: 100 },
+        nextResetIn: { hourly: 60, daily: 24 }
       }
     };
   }

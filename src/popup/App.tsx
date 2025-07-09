@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SUPPORTED_LANGUAGES } from '../lib/constants';
 import BlacklistManager from './components/BlacklistManager';
 import Settings from './components/Settings';
+import RateLimitStatus from './components/RateLimitStatus';
 import type { UserSettings, LanguageCode, SupportedLanguage } from '../types';
 
 type TabType = 'main' | 'blacklist';
@@ -226,6 +227,8 @@ function App(): React.JSX.Element {
               </div>
             )}
           </div>
+          
+          <RateLimitStatus className="fluent-section" />
         </>
       )}
 

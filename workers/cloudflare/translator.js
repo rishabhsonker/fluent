@@ -3,13 +3,7 @@
  * Features: Authentication, rate limiting, cost protection, caching, monitoring
  */
 
-// Constants
-const RATE_LIMITS = {
-  FREE_DAILY_WORDS: 50000,  // Increased from 50
-  FREE_HOURLY_WORDS: 10000,  // Increased from 20
-  AUTHENTICATED_DAILY_WORDS: 100000,
-  AUTHENTICATED_HOURLY_WORDS: 50000,
-};
+// Constants - Rate limits are now configured in wrangler.toml
 
 const COST_LIMITS = {
   DAILY_COST_USD: 10,
@@ -138,6 +132,18 @@ export default {
           status: 405, 
           headers: responseHeaders 
         });
+      }
+
+      // Route: /installations/register (no auth required for registration)
+      if (pathname === '/installations/register' && request.method === 'POST') {
+        const response = await handleInstallationRegistration(request, env, ctx);
+        
+        // Add security headers
+        Object.entries(responseHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        
+        return response;
       }
 
       // Route: /translate
@@ -279,15 +285,16 @@ async function verifyAuthentication(request, env) {
 }
 
 /**
- * Handle translation requests with all security checks
+ * Handle translation requests with cache-aware rate limiting
  */
 async function handleTranslate(request, env, ctx) {
   const startTime = Date.now(); // Track request processing time
   
-  // Define clientId outside try block so it's accessible in catch
-  const clientId = request.headers.get('X-Client-Id') || 
-                  request.headers.get('CF-Connecting-IP') || 
-                  'anonymous';
+  // Get installation ID for rate limiting (will be required after auth update)
+  const installationId = request.headers.get('X-Installation-ID') || 
+                        request.headers.get('X-Extension-Id') || 
+                        request.headers.get('CF-Connecting-IP') || 
+                        'anonymous';
   
   let validWords = []; // Define outside try block for error handling
   
@@ -340,44 +347,12 @@ async function handleTranslate(request, env, ctx) {
       });
     }
 
-    // Check rate limits
-    const rateLimitResult = await checkRateLimit(clientId, validWords.length, !!apiKey, env);
-    if (rateLimitResult.blocked) {
-      return new Response(JSON.stringify({ 
-        error: rateLimitResult.message,
-        retryAfter: rateLimitResult.retryAfter 
-      }), {
-        status: 429,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Retry-After': rateLimitResult.retryAfter.toString(),
-          'X-RateLimit-Limit': rateLimitResult.limit.toString(),
-          'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
-        },
-      });
-    }
-
-    // Check cost limits (only for our API key usage)
-    if (!apiKey) {
-      const totalChars = validWords.join('').length;
-      const costResult = await checkCostLimit(totalChars, env);
-      if (costResult.blocked) {
-        return new Response(JSON.stringify({ 
-          error: costResult.message,
-          dailyLimitUSD: COST_LIMITS.DAILY_COST_USD 
-        }), {
-          status: 402,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    // Process translations
+    // STEP 1: Check cache FIRST (no rate limit for cached words)
     const translations = {};
     const wordsToTranslate = [];
     const cacheStats = { hits: 0, misses: 0 };
 
-    // Check cache first
+    // Check cache for all requested words
     for (const word of validWords) {
       const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
       const cached = await env.TRANSLATION_CACHE.get(cacheKey);
@@ -393,6 +368,73 @@ async function handleTranslate(request, env, ctx) {
       } else {
         wordsToTranslate.push(word);
         cacheStats.misses++;
+      }
+    }
+
+    // STEP 2: Rate limit ONLY uncached words
+    let rateLimitStatus = { hourlyRemaining: null, dailyRemaining: null };
+    
+    if (wordsToTranslate.length > 0 && env.TRANSLATION_RATE_LIMITER) {
+      // Check hourly rate limit for new translations
+      const hourlyRateLimit = await env.TRANSLATION_RATE_LIMITER.limit({
+        key: `${installationId}:${targetLanguage}`
+      });
+      
+      // Check daily rate limit for new translations
+      const dailyRateLimit = await env.DAILY_TRANSLATION_LIMITER.limit({
+        key: `${installationId}:${targetLanguage}`
+      });
+      
+      rateLimitStatus = {
+        hourlyRemaining: hourlyRateLimit.remaining || 0,
+        dailyRemaining: dailyRateLimit.remaining || 0
+      };
+      
+      if (!hourlyRateLimit.success || !dailyRateLimit.success) {
+        // Still return cached translations even if rate limited
+        return new Response(JSON.stringify({
+          translations,  // Return what we have from cache
+          error: 'Rate limit exceeded for new translations',
+          errorCode: 'RATE_LIMIT_EXCEEDED',
+          limits: rateLimitStatus,
+          metadata: {
+            cacheHits: cacheStats.hits,
+            cacheMisses: cacheStats.misses,
+            partial: true
+          }
+        }), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-RateLimit-Limit-Hourly': '100',
+            'X-RateLimit-Remaining-Hourly': rateLimitStatus.hourlyRemaining.toString(),
+            'X-RateLimit-Limit-Daily': '1000', 
+            'X-RateLimit-Remaining-Daily': rateLimitStatus.dailyRemaining.toString(),
+            'Retry-After': '3600'
+          }
+        });
+      }
+    }
+
+    // STEP 3: Check cost limits (only if using our API key)
+    if (!apiKey && wordsToTranslate.length > 0) {
+      const totalChars = wordsToTranslate.join('').length;
+      const costResult = await checkCostLimit(totalChars, env);
+      if (costResult.blocked) {
+        return new Response(JSON.stringify({ 
+          translations,  // Return cached translations
+          error: costResult.message,
+          errorCode: 'COST_LIMIT_EXCEEDED',
+          dailyLimitUSD: COST_LIMITS.DAILY_COST_USD,
+          metadata: {
+            cacheHits: cacheStats.hits,
+            cacheMisses: cacheStats.misses,
+            partial: true
+          }
+        }), {
+          status: 402,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
     }
 
@@ -459,27 +501,19 @@ async function handleTranslate(request, env, ctx) {
       }
     }
 
-    // Update rate limit counters
-    ctx.waitUntil(updateRateLimit(clientId, validWords.length, !!apiKey, env));
-
     // Log successful request metrics
     logInfo('Translation request completed', {
-      clientId,
-      wordCount: validWords.length,
+      installationId,
+      wordsRequested: validWords.length,
+      newTranslations: wordsToTranslate.length,
+      cachedTranslations: cacheStats.hits,
       targetLanguage,
       cacheHitRate: cacheStats.hits / (cacheStats.hits + cacheStats.misses),
       processingTimeMs: Date.now() - startTime,
       environment: env.ENVIRONMENT
     });
-
-    // Log what we're returning
-    logInfo('Returning translations', {
-      translationCount: Object.keys(translations).length,
-      translations: translations,
-      wordsRequested: validWords.length
-    });
     
-    // Return response with metadata
+    // Return response with metadata including rate limit info
     return new Response(JSON.stringify({ 
       translations,
       metadata: {
@@ -487,6 +521,8 @@ async function handleTranslate(request, env, ctx) {
         cacheMisses: cacheStats.misses,
         cacheHitRate: cacheStats.hits / (cacheStats.hits + cacheStats.misses),
         wordsProcessed: validWords.length,
+        newTranslations: wordsToTranslate.length,
+        limits: rateLimitStatus
       }
     }), {
       status: 200,
@@ -494,105 +530,27 @@ async function handleTranslate(request, env, ctx) {
         'Content-Type': 'application/json',
         'X-Cache-Hits': cacheStats.hits.toString(),
         'X-Cache-Misses': cacheStats.misses.toString(),
+        'X-RateLimit-Remaining-Hourly': (rateLimitStatus.hourlyRemaining || 100).toString(),
+        'X-RateLimit-Remaining-Daily': (rateLimitStatus.dailyRemaining || 1000).toString(),
       },
     });
 
   } catch (error) {
     logError('Translation handler error', error, {
-      clientId,
+      installationId,
       wordCount: validWords?.length || 0
     });
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error',
+      errorCode: 'INTERNAL_ERROR'
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 }
 
-/**
- * Rate limiting implementation
- */
-async function checkRateLimit(clientId, wordCount, hasApiKey, env) {
-  const now = new Date();
-  const hourKey = `rate:${clientId}:${now.toISOString().slice(0, 13)}`;
-  const dayKey = `rate:${clientId}:${now.toISOString().slice(0, 10)}`;
-
-  const [hourlyCount, dailyCount] = await Promise.all([
-    env.TRANSLATION_CACHE.get(hourKey),
-    env.TRANSLATION_CACHE.get(dayKey),
-  ]);
-
-  const currentHourly = parseInt(hourlyCount || '0');
-  const currentDaily = parseInt(dailyCount || '0');
-
-  const limits = hasApiKey ? {
-    hourly: RATE_LIMITS.AUTHENTICATED_HOURLY_WORDS,
-    daily: RATE_LIMITS.AUTHENTICATED_DAILY_WORDS,
-  } : {
-    hourly: RATE_LIMITS.FREE_HOURLY_WORDS,
-    daily: RATE_LIMITS.FREE_DAILY_WORDS,
-  };
-
-  // Check hourly limit
-  if (currentHourly + wordCount > limits.hourly) {
-    const nextHour = new Date(now);
-    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
-    return {
-      blocked: true,
-      message: `Hourly rate limit exceeded (${limits.hourly} words/hour)`,
-      retryAfter: Math.ceil((nextHour - now) / 1000),
-      limit: limits.hourly,
-      remaining: Math.max(0, limits.hourly - currentHourly),
-    };
-  }
-
-  // Check daily limit
-  if (currentDaily + wordCount > limits.daily) {
-    const nextDay = new Date(now);
-    nextDay.setDate(nextDay.getDate() + 1);
-    nextDay.setHours(0, 0, 0, 0);
-    return {
-      blocked: true,
-      message: `Daily rate limit exceeded (${limits.daily} words/day). ${hasApiKey ? '' : 'Provide your own API key for higher limits.'}`,
-      retryAfter: Math.ceil((nextDay - now) / 1000),
-      limit: limits.daily,
-      remaining: Math.max(0, limits.daily - currentDaily),
-    };
-  }
-
-  return {
-    blocked: false,
-    limit: limits.daily,
-    remaining: limits.daily - currentDaily - wordCount,
-  };
-}
-
-/**
- * Update rate limit counters
- */
-async function updateRateLimit(clientId, wordCount, hasApiKey, env) {
-  const now = new Date();
-  const hourKey = `rate:${clientId}:${now.toISOString().slice(0, 13)}`;
-  const dayKey = `rate:${clientId}:${now.toISOString().slice(0, 10)}`;
-
-  const [hourlyCount, dailyCount] = await Promise.all([
-    env.TRANSLATION_CACHE.get(hourKey),
-    env.TRANSLATION_CACHE.get(dayKey),
-  ]);
-
-  await Promise.all([
-    env.TRANSLATION_CACHE.put(
-      hourKey,
-      String((parseInt(hourlyCount || '0') + wordCount)),
-      { expirationTtl: 3600 } // 1 hour
-    ),
-    env.TRANSLATION_CACHE.put(
-      dayKey,
-      String((parseInt(dailyCount || '0') + wordCount)),
-      { expirationTtl: CACHE_TTL.RATE_LIMIT }
-    ),
-  ]);
-}
+// Old rate limiting functions removed - now using Cloudflare Rate Limiting API
 
 /**
  * Cost limiting for our API key usage
@@ -777,6 +735,12 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
 async function handleContext(request, env, ctx) {
   const startTime = Date.now();
   
+  // Get installation ID for rate limiting
+  const installationId = request.headers.get('X-Installation-ID') || 
+                        request.headers.get('X-Extension-Id') || 
+                        request.headers.get('CF-Connecting-IP') || 
+                        'anonymous';
+  
   try {
     // Parse request body
     let body;
@@ -817,6 +781,78 @@ async function handleContext(request, env, ctx) {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    // STEP 1: Check cache first for context data
+    const contexts = {};
+    const wordsNeedingContext = [];
+    const cacheStats = { hits: 0, misses: 0 };
+    
+    // Check cache for all requested words
+    for (const word of words) {
+      const cacheKey = `context:${targetLanguage}:${word.toLowerCase()}`;
+      const cached = await env.TRANSLATION_CACHE.get(cacheKey);
+      
+      if (cached) {
+        try {
+          contexts[word] = JSON.parse(cached);
+          cacheStats.hits++;
+        } catch {
+          wordsNeedingContext.push(word);
+          cacheStats.misses++;
+        }
+      } else {
+        wordsNeedingContext.push(word);
+        cacheStats.misses++;
+      }
+    }
+    
+    // STEP 2: Rate limit ONLY uncached AI requests
+    let rateLimitStatus = { hourlyRemaining: null, dailyRemaining: null };
+    
+    if (wordsNeedingContext.length > 0 && env.AI_RATE_LIMITER) {
+      // Check hourly rate limit for AI requests
+      const hourlyRateLimit = await env.AI_RATE_LIMITER.limit({
+        key: `${installationId}:${targetLanguage}`
+      });
+      
+      // Check daily rate limit for AI requests
+      const dailyRateLimit = await env.DAILY_AI_LIMITER.limit({
+        key: `${installationId}:${targetLanguage}`
+      });
+      
+      rateLimitStatus = {
+        hourlyRemaining: hourlyRateLimit.remaining || 0,
+        dailyRemaining: dailyRateLimit.remaining || 0
+      };
+      
+      if (!hourlyRateLimit.success || !dailyRateLimit.success) {
+        // Still return cached contexts even if rate limited
+        return new Response(JSON.stringify({
+          contexts,  // Return what we have from cache
+          error: 'Rate limit exceeded for AI context requests',
+          errorCode: 'AI_RATE_LIMIT_EXCEEDED',
+          limits: rateLimitStatus,
+          metadata: {
+            cacheHits: cacheStats.hits,
+            cacheMisses: cacheStats.misses,
+            partial: true
+          }
+        }), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-RateLimit-Limit-Hourly': '10',
+            'X-RateLimit-Remaining-Hourly': rateLimitStatus.hourlyRemaining.toString(),
+            'X-RateLimit-Limit-Daily': '100', 
+            'X-RateLimit-Remaining-Daily': rateLimitStatus.dailyRemaining.toString(),
+            'Retry-After': '3600'
+          }
+        });
+      }
+    }
+    
+    // STEP 3: Get context for uncached words only
+    if (wordsNeedingContext.length > 0) {
 
     // Create a batch prompt for Claude
     const prompt = `You are helping English speakers learn ${targetLanguage}. For each English word and its ${targetLanguage} translation below, provide:
@@ -906,28 +942,49 @@ Respond with valid JSON only, no markdown or additional text.`;
       );
     }
     
-    ctx.waitUntil(Promise.all(cachePromises));
+      ctx.waitUntil(Promise.all(cachePromises));
+      
+      // Merge new contexts with cached ones
+      Object.assign(contexts, contextData);
+    }
 
     logInfo('Context request completed', {
-      wordCount: words.length,
+      installationId,
+      wordsRequested: words.length,
+      newContexts: wordsNeedingContext.length,
+      cachedContexts: cacheStats.hits,
       targetLanguage,
       processingTimeMs: Date.now() - startTime
     });
 
     return new Response(JSON.stringify({ 
-      contexts: contextData,
+      contexts,
       metadata: {
+        cacheHits: cacheStats.hits,
+        cacheMisses: cacheStats.misses,
         wordsProcessed: words.length,
+        newContexts: wordsNeedingContext.length,
+        limits: rateLimitStatus
       }
     }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Cache-Hits': cacheStats.hits.toString(),
+        'X-Cache-Misses': cacheStats.misses.toString(),
+        'X-AI-RateLimit-Remaining-Hourly': (rateLimitStatus.hourlyRemaining || 10).toString(),
+        'X-AI-RateLimit-Remaining-Daily': (rateLimitStatus.dailyRemaining || 100).toString(),
+      },
     });
 
   } catch (error) {
-    logError('Context handler error', error);
+    logError('Context handler error', error, {
+      installationId,
+      wordCount: words?.length || 0
+    });
     return new Response(JSON.stringify({ 
       error: 'Context service error',
+      errorCode: 'CONTEXT_SERVICE_ERROR',
       message: 'Unable to generate word contexts at this time'
     }), {
       status: 503,
@@ -1219,4 +1276,102 @@ async function getHealthStatus(env) {
       hasClaudeKey: !!env.CLAUDE_API_KEY,
     },
   };
+}
+
+/**
+ * Handle installation registration for unique tokens
+ */
+async function handleInstallationRegistration(request, env, ctx) {
+  try {
+    // Parse request body
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const { installationId, extensionVersion, timestamp, platform } = body;
+    
+    // Validate inputs
+    if (!installationId || typeof installationId !== 'string' || installationId.length < 10) {
+      return new Response(JSON.stringify({ error: 'Invalid installation ID' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // Generate unique API token for this installation
+    const apiToken = await generateInstallationToken(installationId, env);
+    const refreshToken = await generateRefreshToken(installationId, env);
+    
+    // Store installation info in KV
+    const installationData = {
+      installationId,
+      extensionVersion,
+      platform,
+      registeredAt: timestamp || Date.now(),
+      lastSeen: Date.now(),
+      tokenVersion: 1
+    };
+    
+    await env.TRANSLATION_CACHE.put(
+      `installation:${installationId}`,
+      JSON.stringify(installationData),
+      { expirationTtl: 90 * 24 * 60 * 60 } // 90 days
+    );
+    
+    logInfo('New installation registered', {
+      installationId,
+      extensionVersion,
+      platform
+    });
+    
+    return new Response(JSON.stringify({
+      apiToken,
+      refreshToken,
+      expiresIn: 7 * 24 * 60 * 60 // 7 days
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    
+  } catch (error) {
+    logError('Installation registration error', error);
+    return new Response(JSON.stringify({ 
+      error: 'Registration failed'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+/**
+ * Generate installation-specific API token
+ */
+async function generateInstallationToken(installationId, env) {
+  const secret = env.FLUENT_SHARED_SECRET || 'default-secret';
+  const message = `${installationId}-${Date.now()}-${secret}`;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return btoa(hashArray.map(b => String.fromCharCode(b)).join(''));
+}
+
+/**
+ * Generate refresh token
+ */
+async function generateRefreshToken(installationId, env) {
+  const secret = env.FLUENT_SHARED_SECRET || 'default-secret';
+  const message = `refresh-${installationId}-${Date.now()}-${secret}`;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return btoa(hashArray.map(b => String.fromCharCode(b)).join(''));
 }

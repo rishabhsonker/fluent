@@ -134,12 +134,15 @@ if (request.headers.authorized === "true") { /* NO! */ }
 ### Before Each Release
 - [ ] All console.logs removed
 - [ ] API endpoints use env vars
-- [ ] Secrets not in source code
-- [ ] Dependencies updated
+- [ ] No hardcoded secrets in source code
+- [ ] Dependencies updated and audited
 - [ ] Security headers configured
 - [ ] Rate limits tested
 - [ ] Input validation complete
 - [ ] Error messages sanitized
+- [ ] CORS configuration reviewed
+- [ ] Permission usage justified
+- [ ] Extension ID allowlist updated
 
 ### Monthly Review
 - [ ] Rotate shared secrets
@@ -268,18 +271,146 @@ const SECURITY_ALERTS = {
 - ✅ Input sanitization
 - ✅ Secure headers
 
-### Planned (v1.1)
-- [ ] WebAuthn support
-- [ ] Certificate pinning
-- [ ] Subresource integrity
+### Critical Security Updates (v1.0.1)
+- [ ] Replace hardcoded shared secret with dynamic generation
+- [ ] Implement installation-time API registration
+- [ ] Strengthen CORS validation for extension origins
+- [ ] Add request signing with unique per-install tokens
+
+### Security Enhancements (v1.1)
+- [ ] Dynamic permissions (remove <all_urls>)
+- [ ] Subresource integrity for all external resources
+- [ ] Certificate pinning for API endpoints
+- [ ] Enhanced error message sanitization
+- [ ] Dependency vulnerability scanning in CI/CD
 - [ ] Security.txt file
 - [ ] Bug bounty program
 
-### Future (v2.0)
-- [ ] E2E encryption
+### Advanced Security (v2.0)
+- [ ] E2E encryption for all user data
+- [ ] WebAuthn support for premium features
 - [ ] Hardware key support
-- [ ] Zero-knowledge proofs
-- [ ] Decentralized storage
+- [ ] Zero-knowledge proofs for analytics
+- [ ] Decentralized storage options
+
+## 🔐 Authentication Architecture Challenges
+
+### The Browser Extension Authentication Dilemma
+
+Browser extensions face a unique challenge: how to authenticate with backend services without requiring user registration while preventing API abuse.
+
+#### Current Approach
+- **Shared Secret**: Uses a hardcoded HMAC secret in the extension code
+- **Pros**: Works immediately, no user friction, simple implementation
+- **Cons**: Secret is visible in source, no per-user rate limiting, can't revoke individual access
+
+#### Recommended Solution: Dynamic Installation Tokens
+
+```javascript
+// On extension install
+chrome.runtime.onInstalled.addListener(async () => {
+  // Generate unique installation ID
+  const installId = crypto.randomUUID();
+  
+  // Register with backend
+  const response = await fetch('https://api.fluent.com/installations/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      installationId: installId,
+      extensionVersion: chrome.runtime.getManifest().version,
+      timestamp: Date.now()
+    })
+  });
+  
+  const { apiToken, refreshToken } = await response.json();
+  
+  // Store securely using existing encryption
+  await secureCrypto.storeApiKey(apiToken);
+  await secureCrypto.storeRefreshToken(refreshToken);
+});
+```
+
+This approach provides:
+- ✅ Unique token per installation
+- ✅ Ability to revoke compromised tokens
+- ✅ Per-installation rate limiting
+- ✅ Usage analytics without user tracking
+- ✅ Seamless user experience
+
+#### Alternative Approaches Considered
+1. **Proof of Work**: Computational challenges for tokens (high CPU usage)
+2. **OAuth with Anonymous Accounts**: Auto-generated accounts (complexity)
+3. **Browser Fingerprinting**: Device-based tokens (privacy concerns)
+4. **Time-based Tokens**: Rotating secrets (sync issues)
+
+## 📋 Known Security Considerations & Future Improvements
+
+During our security review, we identified several areas for improvement. These are tracked for future releases:
+
+### Critical Priority
+1. **Hardcoded Shared Secret**
+   - *Current*: Shared secret visible in source code
+   - *Impact*: Anyone can authenticate as the extension
+   - *Fix*: Implement dynamic installation tokens (v1.0.1)
+
+2. **Authentication Scheme**
+   - *Current*: Single shared secret for all users
+   - *Impact*: No per-user access control
+   - *Fix*: Per-installation API tokens with refresh mechanism
+
+### High Priority
+3. **CORS Validation**
+   - *Current*: Accepts any chrome-extension:// origin
+   - *Impact*: Other extensions could abuse the API
+   - *Fix*: Validate against allowlisted extension IDs
+
+4. **Permission Scope**
+   - *Current*: Content scripts run on all websites
+   - *Impact*: Larger attack surface than necessary
+   - *Fix*: Implement dynamic host permissions
+
+5. **Subresource Integrity**
+   - *Current*: No SRI hashes for external resources
+   - *Impact*: Supply chain attack vulnerability
+   - *Fix*: Add SRI hashes to all external resources
+
+### Medium Priority
+6. **Error Information Disclosure**
+   - *Current*: Some errors may leak implementation details
+   - *Impact*: Aids attackers in reconnaissance
+   - *Fix*: Implement sanitized error codes
+
+7. **Certificate Pinning**
+   - *Current*: Standard HTTPS without pinning
+   - *Impact*: Vulnerable to sophisticated MITM
+   - *Fix*: Implement cert pinning with backup pins
+
+8. **Key Derivation Enhancement**
+   - *Current*: Uses extension ID in key derivation
+   - *Impact*: Predictable entropy source
+   - *Fix*: Use cryptographically secure random values
+
+9. **Security Headers**
+   - *Current*: Missing some recommended headers
+   - *Impact*: Reduced defense in depth
+   - *Fix*: Add Expect-CT, Cross-Domain-Policies headers
+
+10. **Dependency Management**
+    - *Current*: Manual dependency updates
+    - *Impact*: Vulnerable dependencies may persist
+    - *Fix*: Automated scanning and updates
+
+### Low Priority
+11. **Timing Attack Prevention**
+    - *Current*: Standard string comparison for HMAC
+    - *Impact*: Theoretical timing attack possibility
+    - *Fix*: Use constant-time comparison
+
+12. **Security Program**
+    - *Current*: Email-based reporting only
+    - *Impact*: Security issues may go unreported
+    - *Fix*: Establish formal bug bounty program
 
 ## 📚 Security Resources
 

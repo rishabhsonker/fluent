@@ -1,99 +1,70 @@
 #!/bin/bash
 
-# Fluent Cloudflare Worker Deployment Script
+# Cloudflare Worker Deployment Script
+# This script handles the deployment of the Fluent translator worker to Cloudflare
 
-echo "🚀 Fluent Cloudflare Worker Deployment"
-echo "======================================"
+set -e
 
-# Check if wrangler is installed
-if ! command -v wrangler &> /dev/null; then
-    echo "❌ Wrangler CLI not found. Installing..."
-    npm install -g wrangler
-else
-    echo "✅ Wrangler CLI found"
-fi
+echo "🚀 Starting Cloudflare Worker deployment..."
 
-# Check if logged in
-if ! wrangler whoami &> /dev/null; then
-    echo "🔐 Please login to Cloudflare..."
-    wrangler login
-fi
-
-# Get current config
-echo ""
-echo "📋 Current Configuration:"
-grep "id = " wrangler.toml | grep -v "your-"
-
-# Check if KV namespace needs to be created
-if grep -q "your-kv-namespace-id" wrangler.toml; then
-    echo ""
-    echo "⚠️  KV namespace not configured!"
-    echo "Creating KV namespace..."
+# Check if we're in CI environment
+if [ -n "$CI" ]; then
+    echo "📦 Running in CI environment"
     
-    # Create KV namespace
-    OUTPUT=$(wrangler kv namespace create TRANSLATION_CACHE 2>&1)
-    KV_ID=$(echo "$OUTPUT" | grep -o 'id = "[^"]*"' | sed 's/id = "//;s/"//')
-    
-    # Create preview namespace
-    PREVIEW_OUTPUT=$(wrangler kv namespace create TRANSLATION_CACHE --preview 2>&1)
-    PREVIEW_ID=$(echo "$PREVIEW_OUTPUT" | grep -o 'id = "[^"]*"' | sed 's/id = "//;s/"//')
-    
-    if [ ! -z "$KV_ID" ]; then
-        echo "✅ Created KV namespace: $KV_ID"
-        echo "✅ Created preview namespace: $PREVIEW_ID"
-        
-        # Update wrangler.toml
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
-            sed -i '' "s/your-kv-namespace-id/$KV_ID/g" wrangler.toml
-            sed -i '' "s/preview_id = \"[^\"]*\"/preview_id = \"$PREVIEW_ID\"/g" wrangler.toml
-        else
-            # Linux
-            sed -i "s/your-kv-namespace-id/$KV_ID/g" wrangler.toml
-            sed -i "s/preview_id = \"[^\"]*\"/preview_id = \"$PREVIEW_ID\"/g" wrangler.toml
-        fi
-        
-        echo "✅ Updated wrangler.toml with KV namespace IDs"
-    else
-        echo "❌ Failed to create KV namespace"
+    # Check for required environment variables
+    if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+        echo "❌ Error: CLOUDFLARE_API_TOKEN environment variable is not set"
+        echo "Please add CLOUDFLARE_API_TOKEN to your GitHub repository secrets"
+        echo "You can create a token at: https://dash.cloudflare.com/profile/api-tokens"
+        echo ""
+        echo "Required permissions for the token:"
+        echo "- Account: Cloudflare Workers Scripts:Edit"
+        echo "- Zone: Workers Routes:Edit (if using custom domains)"
         exit 1
     fi
 fi
 
-# Deploy
-echo ""
-echo "🚀 Deploying worker..."
-wrangler deploy
+# Navigate to the worker directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+cd "$SCRIPT_DIR"
 
-# Get worker URL
-WORKER_URL=$(wrangler deploy --dry-run 2>&1 | grep -o 'https://[^[:space:]]*' | head -1)
-
-if [ ! -z "$WORKER_URL" ]; then
-    echo ""
-    echo "✅ Deployment successful!"
-    echo "🌐 Worker URL: $WORKER_URL"
-    
-    # Test the worker
-    echo ""
-    echo "🧪 Testing worker..."
-    HEALTH_RESPONSE=$(curl -s "$WORKER_URL/health")
-    
-    if [[ "$HEALTH_RESPONSE" == *"ok"* ]]; then
-        echo "✅ Health check passed"
-    else
-        echo "❌ Health check failed"
-    fi
-    
-    echo ""
-    echo "📝 Next steps:"
-    echo "1. Update src/lib/constants.js with your worker URL:"
-    echo "   TRANSLATOR_API: '$WORKER_URL',"
-    echo ""
-    echo "2. (Optional) Add Microsoft Translator API key:"
-    echo "   wrangler secret put MICROSOFT_TRANSLATOR_KEY"
-    echo ""
-    echo "3. Rebuild the extension:"
-    echo "   npm run build"
-else
-    echo "❌ Failed to get worker URL"
+# Check if wrangler.toml exists
+if [ ! -f "wrangler.toml" ]; then
+    echo "❌ Error: wrangler.toml not found in $(pwd)"
+    exit 1
 fi
+
+# Check if translator.js exists
+if [ ! -f "translator.js" ]; then
+    echo "❌ Error: translator.js not found in $(pwd)"
+    exit 1
+fi
+
+# Validate the JavaScript file
+echo "✅ Validating translator.js..."
+node -c translator.js
+
+# Deploy to Cloudflare
+echo "🌐 Deploying to Cloudflare Workers..."
+
+# Use production environment by default in CI
+if [ -n "$CI" ]; then
+    echo "Deploying to production environment..."
+    npx wrangler deploy --env production
+else
+    # In local environment, prompt for environment
+    echo "Select deployment environment:"
+    echo "1) production"
+    echo "2) staging"
+    echo "3) development"
+    read -p "Enter choice [1-3]: " choice
+    
+    case $choice in
+        1) npx wrangler deploy --env production ;;
+        2) npx wrangler deploy --env staging ;;
+        3) npx wrangler deploy --env development ;;
+        *) npx wrangler deploy ;; # Default environment
+    esac
+fi
+
+echo "✅ Deployment completed successfully!"
