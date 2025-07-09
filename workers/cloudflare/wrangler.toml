@@ -60,6 +60,10 @@ kv_namespaces = [
   { binding = "TRANSLATION_CACHE", id = "90eca25c86964d90b4421803ce41094c" }
 ]
 
+[env.production.vars]
+ENVIRONMENT = "production"
+AZURE_REGION = "eastus"
+
 # Production rate limiting bindings
 [[env.production.unsafe.bindings]]
 name = "TRANSLATION_RATE_LIMITER"

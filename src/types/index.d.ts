@@ -53,6 +53,7 @@ export interface TranslationStats {
   apiCalls: number;
   hitRate: number;
   memoryCacheSize: number;
+  memoryCacheHitRate: number;
   dailyUsage?: number;
 }
 
