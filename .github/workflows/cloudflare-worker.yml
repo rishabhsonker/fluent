@@ -59,23 +59,31 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Check for Cloudflare API Token
+    - name: Check for Cloudflare secrets
       run: |
         if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
           echo "::error::CLOUDFLARE_API_TOKEN secret is not set. Please add it to your repository secrets."
           echo "See workers/cloudflare/DEPLOYMENT.md for instructions."
           exit 1
         fi
+        if [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+          echo "::error::CLOUDFLARE_ACCOUNT_ID secret is not set. Please add it to your repository secrets."
+          echo "You can find your account ID in the Cloudflare dashboard URL or on the right sidebar of any zone."
+          exit 1
+        fi
         echo "✅ CLOUDFLARE_API_TOKEN is configured"
+        echo "✅ CLOUDFLARE_ACCOUNT_ID is configured"
     
     - name: Deploy to Cloudflare Workers
       uses: cloudflare/wrangler-action@v3
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         workingDirectory: workers/cloudflare
         command: deploy --env production
       env:
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         
     - name: Upload site configuration
       if: success()
