@@ -234,7 +234,7 @@ export class SimpleTranslator {
       }
       
       // Convert language name to code (e.g., 'spanish' -> 'es')
-      const langCode = SUPPORTED_LANGUAGES[targetLanguage]?.code || targetLanguage;
+      const langCode = SUPPORTED_LANGUAGES[targetLanguage as keyof typeof SUPPORTED_LANGUAGES]?.code || targetLanguage;
       
       // Debug logging
       logger.info('Translation request:', {
@@ -389,7 +389,7 @@ export class SimpleTranslator {
     // Fetch from API
     try {
       const authHeaders = await InstallationAuth.getAuthHeaders();
-      const langCode = SUPPORTED_LANGUAGES[targetLanguage]?.code || targetLanguage;
+      const langCode = SUPPORTED_LANGUAGES[targetLanguage as keyof typeof SUPPORTED_LANGUAGES]?.code || targetLanguage;
       
       const response = await fetchWithRetry(
         `${API_CONFIG.TRANSLATOR_API}/context`,

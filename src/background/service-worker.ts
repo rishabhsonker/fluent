@@ -212,7 +212,7 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
         return { success: true, message: 'Auth reset and reinitialized' };
       } catch (error) {
         logger.error('Failed to reset auth:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
       }
       
     default:

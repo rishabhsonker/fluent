@@ -542,25 +542,29 @@ body span.fluent-word:hover,
   display: inline-block;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(255, 255, 255, 0.2) 50%,
-    rgba(255, 255, 255, 0.1) 100%
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.08) 100%
   );
   background-size: 200% 100%;
-  animation: fluent-skeleton-pulse 1.5s ease-in-out infinite;
-  border-radius: 4px;
+  animation: fluent-skeleton-pulse 1.8s ease-in-out infinite;
+  border-radius: 6px;
   position: relative;
   overflow: hidden;
+  padding: 0.25em 0.5em;
+  margin: 0.1em 0;
 }
 
 .fluent-skeleton-text {
   height: 1em;
   width: 100%;
-  min-width: 120px;
+  min-width: 140px;
+  display: block;
 }
 
 .fluent-skeleton-full {
-  min-width: 200px;
+  min-width: 220px;
+  height: 1.2em;
 }
 
 @keyframes fluent-skeleton-pulse {
@@ -573,7 +577,17 @@ body span.fluent-word:hover,
 }
 
 .fluent-tooltip-loading {
-  min-height: 1.2em;
+  min-height: 1.4em;
+  display: block;
+  margin: 0.2em 0;
+}
+
+/* Better spacing for tooltip sections with loading states */
+.fluent-tooltip-pronunciation.fluent-tooltip-loading,
+.fluent-tooltip-meaning.fluent-tooltip-loading,
+.fluent-tooltip-example.fluent-tooltip-loading {
+  padding: 0;
+  margin: 0.3em 0;
 }
 
 /* Print styles */
