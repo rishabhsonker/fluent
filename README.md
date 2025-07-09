@@ -1,9 +1,9 @@
 # Fluent - Chrome Extension
 
-[![Version](https://img.shields.io/github/v/release/yourusername/fluent?label=version)](https://github.com/yourusername/fluent/releases)
+[![Version](https://img.shields.io/github/v/release/rishabhsonker/fluent?label=version)](https://github.com/rishabhsonker/fluent/releases)
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Coming%20Soon-green.svg)](#)
-[![Tests](https://github.com/yourusername/fluent/actions/workflows/test.yml/badge.svg)](https://github.com/yourusername/fluent/actions/workflows/test.yml)
-[![Worker Deploy](https://github.com/yourusername/fluent/actions/workflows/cloudflare-worker.yml/badge.svg)](https://github.com/yourusername/fluent/actions/workflows/cloudflare-worker.yml)
+[![Tests](https://github.com/rishabhsonker/fluent/actions/workflows/test.yml/badge.svg)](https://github.com/rishabhsonker/fluent/actions/workflows/test.yml)
+[![Worker Deploy](https://github.com/rishabhsonker/fluent/actions/workflows/cloudflare-worker.yml/badge.svg)](https://github.com/rishabhsonker/fluent/actions/workflows/cloudflare-worker.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-orange.svg)](LICENSE)
 [![Security](https://img.shields.io/badge/security-features-brightgreen.svg)](SECURITY.md)
 [![Languages](https://img.shields.io/badge/languages-ES%20%7C%20FR%20%7C%20DE-red.svg)](#features)
@@ -28,7 +28,7 @@ Coming soon
 
 ### From Source
 ```bash
-git clone [repository-url]
+git clone https://github.com/rishabhsonker/fluent.git
 cd fluent
 npm install
 npm run build
