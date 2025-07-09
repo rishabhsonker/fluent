@@ -1455,7 +1455,7 @@ async function handleTranslateWithContext(request, env, ctx) {
     const translationResult = await handleTranslate(request, env, ctx);
     const translationData = await translationResult.json();
     
-    if (\!translationData.translations || \!enableContext || \!env.CLAUDE_API_KEY) {
+    if (!translationData.translations || !enableContext || !env.CLAUDE_API_KEY) {
       // Return just translations if context is disabled or not available
       return new Response(JSON.stringify(translationData), {
         status: 200,
