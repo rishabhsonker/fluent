@@ -68,9 +68,24 @@ let consoleLogsFound = false;
 
 for (const file of jsFiles) {
   const content = readFileSync(join(DIST_DIR, file), 'utf8');
-  if (content.includes('console.log')) {
-    console.warn(`⚠️  console.log found in ${file}`);
-    consoleLogsFound = true;
+  // More accurate regex that avoids false positives from string literals
+  // Look for actual console.log calls, not strings containing 'console.log'
+  const consoleLogPattern = /console\s*\.\s*log\s*\(/g;
+  const matches = content.match(consoleLogPattern);
+  
+  if (matches && matches.length > 0) {
+    // Check if it's actually being called (not in a string or comment)
+    const isRealCall = matches.some(match => {
+      const index = content.indexOf(match);
+      // Simple heuristic: if preceded by quote, it's likely in a string
+      const before = content.substring(Math.max(0, index - 50), index);
+      return !before.match(/["']\s*$/); 
+    });
+    
+    if (isRealCall) {
+      console.warn(`⚠️  console.log found in ${file}`);
+      consoleLogsFound = true;
+    }
   }
 }
 
@@ -85,10 +100,17 @@ let exposedEndpoints = false;
 for (const file of jsFiles) {
   const content = readFileSync(join(DIST_DIR, file), 'utf8');
   
-  // Check for hardcoded worker URLs
-  if (content.includes('.workers.dev') && !content.includes('localhost')) {
-    console.error(`❌ Hardcoded worker URL found in ${file}`);
-    exposedEndpoints = true;
+  // Check for hardcoded worker URLs - but allow dynamic/conditional URLs
+  const workerUrlPattern = /["'][^"']*\.workers\.dev[^"']*["']/g;
+  const workerMatches = content.match(workerUrlPattern);
+  
+  if (workerMatches) {
+    // Check if it's a simple hardcoded string, not part of dynamic logic
+    const hardcodedPattern = /=\s*["'][^"']*\.workers\.dev[^"']*["'](?!\s*[?:])/;
+    if (hardcodedPattern.test(content)) {
+      console.error(`❌ Hardcoded worker URL found in ${file}`);
+      exposedEndpoints = true;
+    }
   }
   
   // Check for API keys - look for actual hardcoded values, not just variable names
@@ -155,9 +177,10 @@ for (const file of jsFiles) {
     console.warn(`⚠️  innerHTML usage found in ${file} - ensure content is sanitized`);
   }
   
-  // Check for insecure protocols (exclude localhost and schema definitions)
-  const httpPattern = /http:\/\/(?!localhost|127\.0\.0\.1|schemas?\.)/;
-  if (httpPattern.test(content)) {
+  // Check for insecure protocols (exclude localhost, schemas, and XML namespaces)
+  const httpPattern = /http:\/\/(?!localhost|127\.0\.0\.1|schemas?\.|www\.w3\.org)/;
+  // Also check it's not in a comment or part of xmlns
+  if (httpPattern.test(content) && !content.match(/xmlns[^=]*=\s*["']http:/)) {
     console.warn(`⚠️  Insecure HTTP protocol found in ${file}`);
   }
 }

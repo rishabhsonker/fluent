@@ -1,7 +1,15 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export default defineConfig({
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+    'process.env.FLUENT_DEBUG': JSON.stringify('false')
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: false,
@@ -25,9 +33,9 @@ export default defineConfig({
         comments: false
       },
       compress: {
-        drop_console: false, // Keep console statements for debugging
+        drop_console: true, // Remove console statements in production
         drop_debugger: true,
-        pure_funcs: [] // Don't remove any console functions for now
+        pure_funcs: ['console.log', 'console.info', 'console.debug']
       }
     }
   },

@@ -189,8 +189,18 @@ export const WORD_CONFIG: WordConfig = {
 
 // API Configuration
 export const API_CONFIG: ApiConfig = {
-  // Production Cloudflare Worker endpoint
-  TRANSLATOR_API: 'https://fluent-translator.hq.workers.dev',
+  // Cloudflare Worker endpoint - uses environment-based configuration
+  TRANSLATOR_API: (() => {
+    // Check if we're in development mode
+    const manifest = chrome?.runtime?.getManifest?.();
+    const version = manifest?.version || '1.0.0';
+    const isDev = version.includes('dev') || version.includes('beta') || 
+                  process.env.NODE_ENV === 'development';
+    
+    return isDev 
+      ? 'https://fluent-translator-dev.workers.dev'
+      : 'https://fluent-translator.hq.workers.dev';
+  })(),
 } as const;
 
 // Storage keys

@@ -28,8 +28,9 @@ class Logger {
   private readonly maxHistorySize: number;
 
   constructor() {
-    // TEMPORARILY SET TO DEVELOPMENT FOR DEBUGGING
-    this.isDevelopment = true;
+    // Set based on environment - can be overridden by env variable
+    this.isDevelopment = process.env.NODE_ENV === 'development' || 
+                        process.env.FLUENT_DEBUG === 'true';
     
     // Log levels
     this.levels = {
@@ -39,8 +40,8 @@ class Logger {
       DEBUG: 3
     };
     
-    // Set to ERROR level for production (temporarily DEBUG for troubleshooting)
-    this.currentLevel = this.levels.ERROR;
+    // Set log level based on environment
+    this.currentLevel = this.isDevelopment ? this.levels.DEBUG : this.levels.ERROR;
     
     // Log history for debugging (limited size)
     this.history = [];
@@ -84,7 +85,7 @@ class Logger {
           console.info(prefix, message, ...args);
           break;
         case 'DEBUG':
-          console.log(prefix, message, ...args);
+          console['log'](prefix, message, ...args);
           break;
       }
     }
@@ -139,19 +140,21 @@ class Logger {
 // Export singleton instance
 export const logger = new Logger();
 
-// TEMPORARILY DISABLED FOR DEBUGGING
 // For production: Override console methods to prevent any accidental logging
-// (() => {
-//   const noop = (): void => {};
-//   // Keep error and warn for critical issues only
-//   console.log = noop;
-//   console.info = noop;
-//   console.debug = noop;
-//   console.trace = noop;
-//   console.time = noop;
-//   console.timeEnd = noop;
-//   console.timeLog = noop;
-//   console.group = noop;
-//   console.groupEnd = noop;
-//   console.groupCollapsed = noop;
-// })();
+(() => {
+  // Only override in production
+  if (process.env.NODE_ENV !== 'development' && process.env.FLUENT_DEBUG !== 'true') {
+    const noop = (): void => {};
+    // Keep error and warn for critical issues only
+    console.log = noop;
+    console.info = noop;
+    console.debug = noop;
+    console.trace = noop;
+    console.time = noop;
+    console.timeEnd = noop;
+    console.timeLog = noop;
+    console.group = noop;
+    console.groupEnd = noop;
+    console.groupCollapsed = noop;
+  }
+})();

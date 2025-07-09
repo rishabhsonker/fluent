@@ -1,9 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
 import { copyFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export default defineConfig({
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+    'process.env.FLUENT_DEBUG': JSON.stringify('false')
+  },
   plugins: [
     react(),
     {
@@ -91,9 +99,9 @@ export default defineConfig({
         comments: false // Remove all comments
       },
       compress: {
-        drop_console: false, // Keep console statements for debugging
+        drop_console: true, // Remove console statements in production
         drop_debugger: true, // Remove debugger statements
-        pure_funcs: [], // Don't remove any console functions for now
+        pure_funcs: ['console.log', 'console.info', 'console.debug'],
         passes: 2, // Run compression twice for better optimization
         ecma: 2020,
         module: true,
