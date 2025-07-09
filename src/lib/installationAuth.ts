@@ -3,7 +3,7 @@
  * Generates unique tokens for each extension installation
  */
 
-import { SecureCrypto } from './secureCrypto';
+import { secureCrypto } from './secureCrypto';
 import { API_CONFIG } from './constants';
 import { logger } from './logger';
 
@@ -171,7 +171,7 @@ export class InstallationAuth {
    * Store authentication data securely
    */
   private static async storeAuth(data: InstallationData): Promise<void> {
-    const encrypted = await SecureCrypto.encrypt(JSON.stringify(data));
+    const encrypted = await secureCrypto.encrypt(JSON.stringify(data));
     await chrome.storage.local.set({
       [this.STORAGE_KEY]: encrypted,
     });
@@ -187,7 +187,7 @@ export class InstallationAuth {
         return null;
       }
       
-      const decrypted = await SecureCrypto.decrypt(result[this.STORAGE_KEY]);
+      const decrypted = await secureCrypto.decrypt(result[this.STORAGE_KEY]);
       return JSON.parse(decrypted);
     } catch (error) {
       logger.error('Failed to retrieve stored auth:', error);

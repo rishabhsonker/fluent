@@ -49,7 +49,7 @@ export class SecureCrypto {
   /**
    * Encrypt sensitive data
    */
-  private async encrypt(data: string): Promise<EncryptedData> {
+  async encrypt(data: string): Promise<EncryptedData> {
     try {
       const encoder = new TextEncoder();
       const dataBuffer = encoder.encode(data);
@@ -87,7 +87,7 @@ export class SecureCrypto {
   /**
    * Decrypt data
    */
-  private async decrypt(encryptedData: EncryptedData): Promise<string> {
+  async decrypt(encryptedData: EncryptedData): Promise<string> {
     try {
       // Convert from base64
       const ciphertext = Uint8Array.from(atob(encryptedData.ciphertext), c => c.charCodeAt(0));
