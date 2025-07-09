@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -38,5 +41,5 @@ jobs:
           4. Drag and drop the zip file onto the page
           
           ## What's New
-          - See [commit history](https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 ${{ github.ref_name }}^)...${{ github.ref_name }}) for changes" \
+          - See [commit history](https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 2>/dev/null || echo 'HEAD~10')...${{ github.ref_name }}) for changes" \
             ./fluent.zip#fluent-${{ github.ref_name }}.zip
