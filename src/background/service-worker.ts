@@ -115,31 +115,23 @@ async function loadSettings(): Promise<void> {
 
 // Secure message handling
 chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
-  // DEBUG: Log all incoming messages
-  console.log('[Fluent Background] Received message:', request.type, request);
   logger.debug('Received message:', request.type);
   
   // Handle async responses
   (async () => {
     try {
       // Validate message security
-      console.log('[Fluent Background] Validating message...');
       logger.debug('Validating message...');
       securityManager.validateMessage(request, sender);
       
-      console.log('[Fluent Background] Handling message...');
       logger.debug('Handling message...');
       const response = await handleMessage(request, sender);
-      console.log('[Fluent Background] Response from handler:', response);
       
       logger.debug('Creating secure response...');
       // Create secure response
       const secureResponse = await securityManager.createSecureMessage('response', response);
-      console.log('[Fluent Background] Sending secure response:', secureResponse);
       sendResponse(secureResponse);
     } catch (error) {
-      console.error('[Fluent Service Worker] Message handler error:', error);
-      console.error('[Fluent Service Worker] Error stack:', error instanceof Error ? error.stack : 'No stack');
       logger.error('Message handler error', error);
       sendResponse({ error: error instanceof Error ? error.message : 'Unknown error', secure: false });
     }

@@ -41,16 +41,13 @@ function App(): React.JSX.Element {
   async function loadSettings(): Promise<void> {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }) as ChromeMessageResponse;
-      console.log('Popup received settings response:', response);
       if (response.settings) {
         setSettings(response.settings);
-        console.log('Current language setting:', response.settings.targetLanguage);
       }
       setSiteEnabled(response.siteEnabled ?? true);
       setCurrentSite(response.hostname || 'This site');
       setLoading(false);
     } catch (error) {
-      console.error('Error loading settings in popup:', error);
       // Error loading settings - fail silently in production
       setLoading(false);
     }

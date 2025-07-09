@@ -42,7 +42,6 @@ export default function RateLimitStatus({ className = '' }: Props): React.JSX.El
       }
       setLoading(false);
     } catch (error) {
-      console.error('Failed to load rate limits:', error);
       setLoading(false);
     }
   }
