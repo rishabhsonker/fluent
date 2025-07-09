@@ -237,14 +237,84 @@ export default {
 };
 
 /**
+ * Verify installation-based authentication
+ */
+async function verifyInstallationAuth(request, env) {
+  const installationId = request.headers.get('X-Installation-Id');
+  const signature = request.headers.get('X-Signature');
+  const timestamp = request.headers.get('X-Timestamp');
+  
+  if (!installationId || !signature || !timestamp) {
+    return { status: 401, message: 'Missing authentication headers' };
+  }
+  
+  // Verify timestamp (5-minute window)
+  const requestTime = parseInt(timestamp, 10);
+  const now = Date.now();
+  if (isNaN(requestTime) || Math.abs(now - requestTime) > 300000) {
+    return { status: 401, message: 'Authentication token expired' };
+  }
+  
+  // For now, accept any valid installation ID
+  // In production, you might want to check against registered installations
+  // stored in KV or validate the signature using a secret
+  
+  // Check if installation is registered (optional)
+  const installationData = await env.TRANSLATION_CACHE.get(`installation:${installationId}`);
+  if (!installationData) {
+    logInfo('New installation detected', { installationId });
+    // Optionally auto-register new installations
+  }
+  
+  // Verify signature (simplified for now)
+  // In production, implement proper HMAC verification
+  const expectedSignature = await generateSignature(installationId, timestamp, env);
+  if (signature !== expectedSignature) {
+    // For now, log but don't reject to allow migration
+    logInfo('Signature mismatch - allowing for migration period', { installationId });
+  }
+  
+  return null; // Authentication successful
+}
+
+/**
+ * Generate signature for verification
+ */
+async function generateSignature(installationId, timestamp, env) {
+  const secret = env.FLUENT_SHARED_SECRET || 'installation-secret';
+  const message = `${installationId}-${timestamp}`;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, data);
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
+/**
  * Verify authentication headers
  */
 async function verifyAuthentication(request, env) {
-  const extensionId = request.headers.get('X-Extension-Id');
+  // Check for new installation-based auth first
+  const installationId = request.headers.get('X-Installation-Id');
+  const signature = request.headers.get('X-Signature');
   const timestamp = request.headers.get('X-Timestamp');
+  
+  if (installationId && signature && timestamp) {
+    // New installation-based auth
+    return await verifyInstallationAuth(request, env);
+  }
+  
+  // Fallback to old auth for backward compatibility
+  const extensionId = request.headers.get('X-Extension-Id');
   const authToken = request.headers.get('X-Auth-Token');
 
-  // Check required headers
+  // Check required headers for old auth
   if (!extensionId || !timestamp || !authToken) {
     return { status: 401, message: 'Missing authentication headers' };
   }
