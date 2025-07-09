@@ -116,8 +116,9 @@ export default {
       const url = new URL(request.url);
       const pathname = url.pathname;
 
-      // Special handling for /site-config endpoint (GET allowed)
-      if (pathname === '/site-config' && request.method === 'GET') {
+      // Special handling for /config endpoint (GET allowed)
+      // Keep /site-config for backwards compatibility
+      if ((pathname === '/config' || pathname === '/site-config') && request.method === 'GET') {
         // No authentication required for site config
         const config = await getSiteConfig(env);
         return new Response(JSON.stringify(config), {
@@ -146,8 +147,8 @@ export default {
         return response;
       }
 
-      // Route: /translate-with-context (combined endpoint for better performance)
-      if (pathname === '/translate-with-context') {
+      // Route: /translate (combined translation + context endpoint)
+      if (pathname === '/translate') {
         // Verify authentication
         const authResult = await verifyAuthentication(request, env);
         if (authResult) {
@@ -171,55 +172,6 @@ export default {
         return response;
       }
 
-      // Route: /translate
-      if (pathname === '/translate') {
-        // Verify authentication
-        const authResult = await verifyAuthentication(request, env);
-        if (authResult) {
-          return new Response(authResult.message, { 
-            status: authResult.status, 
-            headers: responseHeaders 
-          });
-        }
-
-        // Process translation request
-        const response = await handleTranslate(request, env, ctx);
-        
-        // Add performance header
-        response.headers.set('X-Response-Time', `${Date.now() - startTime}ms`);
-        
-        // Add security headers
-        Object.entries(responseHeaders).forEach(([key, value]) => {
-          response.headers.set(key, value);
-        });
-        
-        return response;
-      }
-
-      // Route: /context (get pronunciation and meaning from Claude)
-      if (pathname === '/context') {
-        // Verify authentication
-        const authResult = await verifyAuthentication(request, env);
-        if (authResult) {
-          return new Response(authResult.message, { 
-            status: authResult.status, 
-            headers: responseHeaders 
-          });
-        }
-
-        // Process context request
-        const response = await handleContext(request, env, ctx);
-        
-        // Add performance header
-        response.headers.set('X-Response-Time', `${Date.now() - startTime}ms`);
-        
-        // Add security headers
-        Object.entries(responseHeaders).forEach(([key, value]) => {
-          response.headers.set(key, value);
-        });
-        
-        return response;
-      }
 
 
       // Route: /health (restricted to authenticated requests)

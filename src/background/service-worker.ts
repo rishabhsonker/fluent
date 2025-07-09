@@ -294,6 +294,22 @@ async function updateSiteSettings(hostname: string, settings: Partial<SiteSettin
 
 // Get translations (with caching and API calls)
 async function getTranslations(words: string[], language: string): Promise<any> {
+  // Ensure installation auth is initialized
+  const installationData = await InstallationAuth.getInstallationData();
+  if (!installationData) {
+    logger.warn('No installation data found, attempting to initialize...');
+    try {
+      await InstallationAuth.initialize();
+      logger.info('Installation auth initialized successfully');
+    } catch (error) {
+      logger.error('Failed to initialize installation auth:', error);
+      return { 
+        translations: {}, 
+        error: 'Extension not properly initialized. Please reload the extension.' 
+      };
+    }
+  }
+  
   // Dynamically import the translator module
   const { translator } = await import('../lib/simpleTranslator');
   

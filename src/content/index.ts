@@ -40,7 +40,7 @@ interface SiteConfig {
 
 (async function() {
   'use strict';
-
+  
   // Singleton pattern - prevent multiple injections
   if (window.__fluent?.initialized) {
     return; // Already initialized
@@ -122,7 +122,7 @@ interface SiteConfig {
     }
     
     try {
-      const response = await fetch(`${API_CONFIG.TRANSLATOR_API}/site-config`, {
+      const response = await fetch(`${API_CONFIG.TRANSLATOR_API}/config`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -332,14 +332,17 @@ interface SiteConfig {
         // Get translations through background script to avoid CORS
         let result;
         try {
+          logger.info('Sending translation request for words:', wordsToReplace);
           result = await chrome.runtime.sendMessage({
             type: 'GET_TRANSLATIONS',
             words: wordsToReplace,
             language: targetLanguage
           });
+          logger.info('Translation response received:', result);
         } catch (error) {
           logger.error('Translation request failed:', error);
-          logger.error('Translation failed', error);
+          // Show visible error to user
+          showErrorNotification('Translation failed. Please check the extension settings.');
           return;
         }
         
@@ -739,6 +742,36 @@ interface SiteConfig {
     cleanup
   };
 })();
+
+// Show error notification to user
+function showErrorNotification(message: string): void {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #ef4444;
+    color: white;
+    padding: 16px 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 320px;
+    z-index: 10000;
+    animation: slideIn 0.3s ease-out;
+  `;
+  notification.textContent = message;
+  
+  if (document.body) {
+    document.body.appendChild(notification);
+  }
+  
+  setTimeout(() => {
+    notification.remove();
+  }, 5000);
+}
 
 // Show notification when daily limit is reached
 function showLimitNotification(): void {

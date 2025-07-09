@@ -246,8 +246,9 @@ export class SimpleTranslator {
         headers: Object.keys(authHeaders)
       });
       
-      // Use combined endpoint for better performance
-      const endpoint = `${API_CONFIG.TRANSLATOR_API}/translate-with-context`;
+      // Use the combined translate endpoint
+      const endpoint = `${API_CONFIG.TRANSLATOR_API}/translate`;
+        
       const response = await fetchWithRetry(
         endpoint,
         {
@@ -260,7 +261,7 @@ export class SimpleTranslator {
             words, 
             targetLanguage: langCode, 
             apiKey,
-            enableContext: true // Get context in same request
+            enableContext: true // Always get context with translations
           })
         },
         {
@@ -330,49 +331,8 @@ export class SimpleTranslator {
       
       this.stats.apiCalls++;
       
-      // After getting translations, also get context (pronunciation, meaning, example)
-      if (data.translations && Object.keys(data.translations).length > 0) {
-        try {
-          const contextResponse = await fetchWithRetry(
-            `${API_CONFIG.TRANSLATOR_API}/context`,
-            {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                ...authHeaders
-              },
-              body: JSON.stringify({ 
-                words: Object.keys(data.translations), 
-                translations: data.translations,
-                targetLanguage: langCode 
-              })
-            },
-            {
-              maxRetries: 2, // Fewer retries for context since it's optional
-              initialDelay: 500 // Start with shorter delay
-            }
-          );
-          
-          if (contextResponse.ok) {
-            const contextData = await contextResponse.json();
-            // Attach context to each translation
-            for (const [word, context] of Object.entries(contextData.contexts || {})) {
-              if (data.translations[word] && context && typeof context === 'object') {
-                // Store context with translation using special format
-                data.translations[word] = {
-                  translation: data.translations[word],
-                  pronunciation: (context as any).pronunciation,
-                  meaning: (context as any).meaning,
-                  example: (context as any).example
-                };
-              }
-            }
-          }
-        } catch (error) {
-          // Log but don't fail if context fetch fails
-          logger.warn('Failed to fetch context:', error);
-        }
-      }
+      // The new /translate endpoint already includes context data
+      // No need for a separate context request
       
       return data.translations || {};
     });

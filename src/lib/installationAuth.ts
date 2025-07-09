@@ -249,6 +249,17 @@ export class InstallationAuth {
     const installationId = await this.getInstallationId();
     const timestamp = Date.now().toString();
     
+    logger.info('Building auth headers:', {
+      hasToken: !!token,
+      tokenLength: token?.length,
+      installationId: installationId
+    });
+    
+    if (!token || !installationId) {
+      logger.error('Missing auth credentials:', { hasToken: !!token, hasInstallationId: !!installationId });
+      throw new Error('Authentication not initialized');
+    }
+    
     // Generate signature using HMAC-SHA256
     const signature = await this.generateSignature(installationId, timestamp);
     
