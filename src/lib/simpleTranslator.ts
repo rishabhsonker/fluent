@@ -246,15 +246,22 @@ export class SimpleTranslator {
         headers: Object.keys(authHeaders)
       });
       
+      // Use combined endpoint for better performance
+      const endpoint = `${API_CONFIG.TRANSLATOR_API}/translate-with-context`;
       const response = await fetchWithRetry(
-        `${API_CONFIG.TRANSLATOR_API}/translate`,
+        endpoint,
         {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
             ...authHeaders
           },
-          body: JSON.stringify({ words, targetLanguage: langCode, apiKey })
+          body: JSON.stringify({ 
+            words, 
+            targetLanguage: langCode, 
+            apiKey,
+            enableContext: true // Get context in same request
+          })
         },
         {
           maxRetries: 3,

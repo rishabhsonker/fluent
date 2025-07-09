@@ -146,6 +146,31 @@ export default {
         return response;
       }
 
+      // Route: /translate-with-context (combined endpoint for better performance)
+      if (pathname === '/translate-with-context') {
+        // Verify authentication
+        const authResult = await verifyAuthentication(request, env);
+        if (authResult) {
+          return new Response(authResult.message, { 
+            status: authResult.status, 
+            headers: responseHeaders 
+          });
+        }
+
+        // Process combined translation + context request
+        const response = await handleTranslateWithContext(request, env, ctx);
+        
+        // Add performance header
+        response.headers.set('X-Response-Time', `${Date.now() - startTime}ms`);
+        
+        // Add security headers
+        Object.entries(responseHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        
+        return response;
+      }
+
       // Route: /translate
       if (pathname === '/translate') {
         // Verify authentication
@@ -868,7 +893,8 @@ async function handleContext(request, env, ctx) {
     // STEP 3: Get context for uncached words only
     if (wordsNeedingContext.length > 0) {
 
-    // Create a batch prompt for Claude
+    // Create a batch prompt for Claude - ONLY for uncached words
+    const wordsToAnalyze = wordsNeedingContext.map(word => `"${word}" → "${translations[word] || word}"`).join('\n');
     const prompt = `You are helping English speakers learn ${targetLanguage}. For each English word and its ${targetLanguage} translation below, provide:
 1. Easy-to-read pronunciation of the ${targetLanguage} word (like "doo-rah-DEH-roh" for Spanish "duradero")
 2. A simple, clear definition in English (one sentence)
@@ -877,7 +903,7 @@ async function handleContext(request, env, ctx) {
 Format your response as a JSON object with the English word as key and an object containing pronunciation (of the ${targetLanguage} word), meaning (in English), and example (in ${targetLanguage}).
 
 Words to analyze:
-${words.map(word => `"${word}" → "${translations[word] || word}"`).join('\n')}
+${wordsToAnalyze}
 
 Example format:
 {
@@ -1412,4 +1438,85 @@ async function generateRefreshToken(installationId, env) {
   );
   
   return token;
+}
+
+/**
+ * Handle combined translation + context request for better performance
+ */
+async function handleTranslateWithContext(request, env, ctx) {
+  const startTime = Date.now();
+  
+  try {
+    // Parse request body
+    const body = await request.json();
+    const { words, targetLanguage, apiKey, enableContext = true } = body;
+
+    // First, get translations
+    const translationResult = await handleTranslate(request, env, ctx);
+    const translationData = await translationResult.json();
+    
+    if (\!translationData.translations || \!enableContext || \!env.CLAUDE_API_KEY) {
+      // Return just translations if context is disabled or not available
+      return new Response(JSON.stringify(translationData), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Get context for translated words in parallel
+    const contextRequest = new Request(request.url.replace('/translate-with-context', '/context'), {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify({
+        words: words,
+        translations: translationData.translations,
+        targetLanguage: targetLanguage
+      })
+    });
+    
+    const contextResult = await handleContext(contextRequest, env, ctx);
+    const contextData = await contextResult.json();
+    
+    // Combine results
+    const combinedResult = {
+      translations: {},
+      metadata: {
+        ...translationData.metadata,
+        processingTime: Date.now() - startTime,
+        hasContext: true
+      }
+    };
+    
+    // Merge translation and context data
+    for (const word of words) {
+      const translation = translationData.translations[word];
+      const context = contextData.contexts?.[word];
+      
+      if (context) {
+        combinedResult.translations[word] = {
+          translation: translation,
+          pronunciation: context.pronunciation,
+          meaning: context.meaning,
+          example: context.example
+        };
+      } else {
+        combinedResult.translations[word] = translation;
+      }
+    }
+    
+    return new Response(JSON.stringify(combinedResult), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+  } catch (error) {
+    logError('Combined translation error', error);
+    return new Response(JSON.stringify({ 
+      error: 'Translation failed',
+      message: error.message 
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 }
