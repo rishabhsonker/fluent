@@ -17,8 +17,9 @@
     "check": "npm run type-check && npm run build && npm run pre-publish",
     "clean": "rm -rf dist fluent.zip fluent-dev.zip",
     "test": "playwright test",
-    "test:unit": "playwright test tests/unit",
-    "test:e2e": "playwright test tests/e2e",
+    "test:unit": "playwright test --project=unit",
+    "test:e2e": "playwright test --project=e2e",
+    "test:ci": "playwright test --project=unit",
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
     "test:report": "playwright show-report"

@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
  * Playwright configuration for testing Fluent Chrome Extension
  */
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './tests',
   timeout: 30 * 1000,
   expect: {
     timeout: 5000
@@ -19,7 +19,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [
-    ['html', { outputFolder: 'test-results/html' }],
+    ['html', { outputFolder: 'playwright-report' }],
     ['json', { outputFile: 'test-results/results.json' }],
     ['list']
   ],
@@ -32,7 +32,15 @@ export default defineConfig({
 
   projects: [
     {
-      name: 'chromium',
+      name: 'unit',
+      testMatch: '**/unit/**/*.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+      },
+    },
+    {
+      name: 'e2e',
+      testMatch: '**/e2e/**/*.spec.ts',
       use: { 
         ...devices['Desktop Chrome'],
         // Load extension for testing
@@ -40,11 +48,14 @@ export default defineConfig({
           args: [
             `--disable-extensions-except=${path.join(__dirname, 'dist')}`,
             `--load-extension=${path.join(__dirname, 'dist')}`,
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
           ],
+          headless: false, // Extensions don't work in headless mode
         },
       },
     },
-    // Can add more browsers if needed
   ],
 
   // No webserver needed for extension testing

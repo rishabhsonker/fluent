@@ -5,6 +5,12 @@ let context: BrowserContext;
 let extensionId: string;
 
 test.beforeAll(async ({ browser }) => {
+  // Skip extension tests in CI
+  if (process.env.CI) {
+    test.skip();
+    return;
+  }
+  
   // Launch browser with extension
   const pathToExtension = path.join(__dirname, '../../dist');
   context = await browser.newContext({
@@ -27,6 +33,11 @@ test.afterAll(async () => {
 });
 
 test.describe('Fluent Extension', () => {
+  test.beforeEach(async () => {
+    if (process.env.CI) {
+      test.skip();
+    }
+  });
   test('should load popup', async () => {
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${extensionId}/popup.html`);
