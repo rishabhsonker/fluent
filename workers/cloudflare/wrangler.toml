@@ -55,7 +55,7 @@ kv_namespaces = [
 
 [env.production.vars]
 ENVIRONMENT = "production"
-# AZURE_REGION is set via secrets
+AZURE_REGION = "eastus"
 
 # Production rate limiting bindings
 [[env.production.unsafe.bindings]]

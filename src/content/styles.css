@@ -151,7 +151,7 @@ body span.fluent-word:hover,
 
 /* Separator between translation word and pronunciation */
 .fluent-tooltip-pronunciation::before {
-  content: '✴';
+  content: '⁑';
   display: inline-block;
   margin: 0 6px;
   color: #9ca3af;

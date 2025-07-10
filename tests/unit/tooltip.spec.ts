@@ -86,10 +86,10 @@ test.describe('Tooltip Unit Tests', () => {
     const language = 'Spanish';
     const gender = 'la, feminine';
     
-    // Format: ⁂ "translation" (gender) means "original" in Language
-    const expectedFormat = `⁂  "${translation}" (${gender}) means "${word}" in ${language}`;
+    // Format: ∙ "translation" (gender) means "original" in Language
+    const expectedFormat = `∙  "${translation}" (${gender}) means "${word}" in ${language}`;
     
-    expect(expectedFormat).toContain('⁂');
+    expect(expectedFormat).toContain('∙');
     expect(expectedFormat).toContain('"casa" (la, feminine)');
     expect(expectedFormat).toContain('means "house" in Spanish');
   });
@@ -105,9 +105,9 @@ test.describe('Tooltip Unit Tests', () => {
   
   test('should validate pronunciation separator', () => {
     // Test separator symbol
-    const separator = '✴';
+    const separator = '⁑';
     
-    expect(separator).toBe('✴');
+    expect(separator).toBe('⁑');
     expect(separator.length).toBe(1);
   });
 });

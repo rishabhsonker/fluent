@@ -361,7 +361,7 @@ export class Tooltip {
         genderInfo = ` (${gender})`;
       }
       
-      wordMappingElement.textContent = `⁂  "${translation}"${genderInfo} means "${original}" in ${languageName}`;
+      wordMappingElement.textContent = `∙  "${translation}"${genderInfo} means "${original}" in ${languageName}`;
       wordMappingElement.style.display = 'block';
     }
     
