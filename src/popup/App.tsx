@@ -109,16 +109,21 @@ function App(): React.JSX.Element {
     if (!settings) return;
     
     setSettings({ ...settings, targetLanguage: language as LanguageCode });
-    await chrome.runtime.sendMessage({
+    
+    const response = await chrome.runtime.sendMessage({
       type: 'UPDATE_SETTINGS',
       settings: { targetLanguage: language }
     });
     
-    // Reload current tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab.id) {
-      chrome.tabs.reload(tab.id);
-    }
+    
+    // Wait a bit to ensure settings are saved before reloading
+    setTimeout(async () => {
+      // Reload current tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab.id) {
+        chrome.tabs.reload(tab.id);
+      }
+    }, 100);
   }
 
   if (loading || !settings) {

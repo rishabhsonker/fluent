@@ -24,10 +24,20 @@ export class InstallationAuth {
    */
   static async initialize(): Promise<void> {
     try {
+      logger.info('[InstallationAuth] Checking for existing auth...');
       const existingAuth = await this.getStoredAuth();
       
-      if (!existingAuth || this.shouldRefreshToken(existingAuth)) {
+      if (!existingAuth) {
+        logger.info('[InstallationAuth] No existing auth found, registering new installation');
         await this.registerNewInstallation();
+      } else if (this.shouldRefreshToken(existingAuth)) {
+        logger.info('[InstallationAuth] Token needs refresh, refreshing...');
+        await this.refreshToken(existingAuth);
+      } else {
+        logger.info('[InstallationAuth] Using existing auth', {
+          installationId: existingAuth.installationId,
+          tokenAge: Date.now() - existingAuth.createdAt
+        });
       }
     } catch (error) {
       logger.error('Failed to initialize installation auth:', error);
@@ -134,10 +144,12 @@ export class InstallationAuth {
       }
       
       const data = await response.json();
-      logger.info('Registration successful:', { 
+      logger.info('[InstallationAuth] Registration successful, response data:', { 
         hasToken: !!data.token,
+        hasApiToken: !!data.apiToken,
         hasRefreshToken: !!data.refreshToken,
-        expiresIn: data.expiresIn
+        expiresIn: data.expiresIn,
+        responseKeys: Object.keys(data)
       });
       
       const installationData: InstallationData = {
@@ -147,8 +159,14 @@ export class InstallationAuth {
         lastRefreshed: Date.now(),
       };
       
+      logger.info('[InstallationAuth] Storing installation data...', {
+        installationId: installationData.installationId,
+        hasToken: !!installationData.token,
+        tokenLength: installationData.token?.length
+      });
+      
       await this.storeAuth(installationData);
-      logger.info('Successfully registered new installation');
+      logger.info('[InstallationAuth] Successfully registered and stored new installation');
     } catch (error) {
       logger.error('Failed to register installation:', error);
       throw error;

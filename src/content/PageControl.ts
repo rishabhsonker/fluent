@@ -23,7 +23,9 @@ export class PageControl {
   
   // Drag state
   private isDragging: boolean = false;
+  private hasDraggedDistance: boolean = false;
   private dragOffset = { x: 0, y: 0 };
+  private dragStartPos = { x: 0, y: 0 };
   private position = { x: 24, y: 24 }; // Default bottom-right position
   
   // Store event handlers for cleanup
@@ -150,7 +152,8 @@ export class PageControl {
       });
       
       button.addEventListener('click', (e: Event) => {
-        if (!this.isDragging) {
+        // Only toggle menu if we haven't dragged a significant distance
+        if (!this.hasDraggedDistance) {
           e.stopPropagation();
           this.toggleMenu();
         }
@@ -374,17 +377,33 @@ export class PageControl {
   // Drag functionality
   private startDrag(e: MouseEvent): void {
     this.isDragging = false; // Reset
+    this.hasDraggedDistance = false; // Reset
     const rect = this.element!.getBoundingClientRect();
     
     this.dragOffset = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
     };
+    
+    this.dragStartPos = {
+      x: e.clientX,
+      y: e.clientY
+    };
 
     // Mouse move handler
     this.mouseMoveHandler = (e: MouseEvent) => {
-      this.isDragging = true;
-      this.handleDrag(e);
+      // Check if we've moved more than 5 pixels in any direction
+      const dx = Math.abs(e.clientX - this.dragStartPos.x);
+      const dy = Math.abs(e.clientY - this.dragStartPos.y);
+      
+      if (dx > 5 || dy > 5) {
+        this.isDragging = true;
+        this.hasDraggedDistance = true;
+      }
+      
+      if (this.hasDraggedDistance) {
+        this.handleDrag(e);
+      }
     };
 
     // Mouse up handler
@@ -426,13 +445,18 @@ export class PageControl {
       this.mouseUpHandler = null;
     }
 
-    // Save position if we actually dragged
-    if (this.isDragging) {
+    // Save position if we actually dragged a significant distance
+    if (this.hasDraggedDistance) {
       this.savePosition();
-      // Reset dragging state after a short delay to prevent click event
+      // Reset drag states after a short delay to prevent immediate click
       setTimeout(() => {
         this.isDragging = false;
+        this.hasDraggedDistance = false;
       }, 100);
+    } else {
+      // If we didn't drag, reset immediately
+      this.isDragging = false;
+      this.hasDraggedDistance = false;
     }
   }
 

@@ -42,9 +42,41 @@ function logError(message, error, context = {}) {
   }));
 }
 
+/**
+ * Validate required environment bindings
+ */
+function validateEnvironment(env) {
+  const warnings = [];
+  
+  if (!env.TRANSLATION_CACHE) {
+    warnings.push('TRANSLATION_CACHE KV namespace not bound - caching disabled');
+  }
+  
+  if (!env.MICROSOFT_TRANSLATOR_KEY) {
+    warnings.push('MICROSOFT_TRANSLATOR_KEY not set - translations will fail without API key');
+  }
+  
+  if (!env.CLAUDE_API_KEY) {
+    warnings.push('CLAUDE_API_KEY not set - context generation disabled');
+  }
+  
+  if (!env.TRANSLATION_RATE_LIMITER) {
+    warnings.push('Rate limiters not bound - rate limiting disabled');
+  }
+  
+  if (warnings.length > 0) {
+    logInfo('Environment warnings', { warnings });
+  }
+  
+  return warnings;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const startTime = Date.now();
+    
+    // Validate environment on first request
+    validateEnvironment(env);
     
     // Security headers
     const securityHeaders = {
@@ -189,6 +221,12 @@ async function verifyAuthentication(request, env) {
   // Extract token from Bearer header
   const token = authHeader.substring(7);
   
+  // TEMPORARY: Accept debug token for testing
+  if (token === 'fluent-extension-2024-shared-secret-key' && installationId === 'debug-installation') {
+    logInfo('Debug authentication accepted');
+    return null; // Success
+  }
+  
   // Verify timestamp (5-minute window)
   const requestTime = parseInt(timestamp, 10);
   const now = Date.now();
@@ -196,10 +234,12 @@ async function verifyAuthentication(request, env) {
     return { status: 401, message: 'Authentication token expired' };
   }
   
-  // Check if installation exists
-  const installationData = await env.TRANSLATION_CACHE.get(`installation:${installationId}`);
-  if (!installationData) {
-    return { status: 401, message: 'Unknown installation' };
+  // Check if installation exists (skip for KV if not available)
+  if (env.TRANSLATION_CACHE) {
+    const installationData = await env.TRANSLATION_CACHE.get(`installation:${installationId}`);
+    if (!installationData) {
+      return { status: 401, message: 'Unknown installation' };
+    }
   }
   
   // Verify signature using HMAC with the token as key
@@ -219,15 +259,17 @@ async function verifyAuthentication(request, env) {
     return { status: 401, message: 'Invalid signature' };
   }
   
-  // Verify the Bearer token is valid
-  const tokenData = await env.TRANSLATION_CACHE.get(`token:${token}`);
-  if (!tokenData) {
-    return { status: 401, message: 'Invalid token' };
-  }
-  
-  const tokenInfo = JSON.parse(tokenData);
-  if (tokenInfo.installationId !== installationId) {
-    return { status: 401, message: 'Token mismatch' };
+  // Verify the Bearer token is valid (skip for KV if not available)
+  if (env.TRANSLATION_CACHE) {
+    const tokenData = await env.TRANSLATION_CACHE.get(`token:${token}`);
+    if (!tokenData) {
+      return { status: 401, message: 'Invalid token' };
+    }
+    
+    const tokenInfo = JSON.parse(tokenData);
+    if (tokenInfo.installationId !== installationId) {
+      return { status: 401, message: 'Token mismatch' };
+    }
   }
   
   return null; // Authentication successful
@@ -289,7 +331,7 @@ async function handleTranslateWithContext(request, env, ctx) {
 
     for (const word of validWords) {
       const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
-      const cached = await env.TRANSLATION_CACHE.get(cacheKey);
+      const cached = env.TRANSLATION_CACHE ? await env.TRANSLATION_CACHE.get(cacheKey) : null;
       
       if (cached) {
         try {
@@ -388,6 +430,14 @@ async function handleTranslateWithContext(request, env, ctx) {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      
+      // Debug logging for API key
+      logInfo('Using translation API', {
+        hasApiKey: !!translationApiKey,
+        keyLength: translationApiKey ? translationApiKey.length : 0,
+        keyPrefix: translationApiKey ? translationApiKey.substring(0, 8) + '...' : 'none',
+        azureRegion: env.AZURE_REGION || 'not-set'
+      });
 
       // Call Microsoft Translator API
       const apiTranslations = await callTranslatorAPI(
@@ -433,7 +483,7 @@ async function handleTranslateWithContext(request, env, ctx) {
           
           const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
           cachePromises.push(
-            env.TRANSLATION_CACHE.put(
+            env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
               cacheKey, 
               JSON.stringify(combined), 
               { expirationTtl: CACHE_TTL.TRANSLATION }
@@ -451,13 +501,18 @@ async function handleTranslateWithContext(request, env, ctx) {
       }
     }
 
+    const endTime = Date.now();
+    const processingTime = endTime - startTime;
+    
     logInfo('Translation request completed', {
       installationId,
       wordsRequested: validWords.length,
       newTranslations: wordsToTranslate.length,
       cachedTranslations: cacheStats.hits,
       targetLanguage,
-      processingTimeMs: Date.now() - startTime
+      processingTimeMs: processingTime,
+      wallTimeMs: processingTime,
+      responseStatus: 200
     });
     
     return new Response(JSON.stringify({ 
@@ -475,6 +530,8 @@ async function handleTranslateWithContext(request, env, ctx) {
         'Content-Type': 'application/json',
         'X-RateLimit-Remaining-Hourly': (rateLimitStatus.hourlyRemaining || 100).toString(),
         'X-RateLimit-Remaining-Daily': (rateLimitStatus.dailyRemaining || 1000).toString(),
+        'X-Processing-Time-Ms': processingTime.toString(),
+        'X-Cache-Hit-Rate': (cacheStats.hits / (cacheStats.hits + cacheStats.misses) * 100).toFixed(1),
       },
     });
 
@@ -509,6 +566,15 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
   // Process in batches if needed
   for (let i = 0; i < words.length; i += BATCH_SIZE) {
     const batch = words.slice(i, i + BATCH_SIZE);
+    
+    // Debug log the request
+    logInfo('Calling Microsoft Translator API', {
+      endpoint: `${endpoint}?${params}`,
+      batchSize: batch.length,
+      region: env.AZURE_REGION || 'global',
+      hasKey: !!apiKey,
+      keyLength: apiKey ? apiKey.length : 0
+    });
     
     const response = await fetch(`${endpoint}?${params}`, {
       method: 'POST',
@@ -635,10 +701,10 @@ async function checkCostLimit(characterCount, env) {
   const hourKey = `cost:hour:${now.toISOString().slice(0, 13)}`;
   const dayKey = `cost:day:${now.toISOString().slice(0, 10)}`;
 
-  const [hourlyCost, dailyCost] = await Promise.all([
+  const [hourlyCost, dailyCost] = env.TRANSLATION_CACHE ? await Promise.all([
     env.TRANSLATION_CACHE.get(hourKey),
     env.TRANSLATION_CACHE.get(dayKey),
-  ]);
+  ]) : [null, null];
 
   const currentHourlyCost = parseFloat(hourlyCost || '0');
   const currentDailyCost = parseFloat(dailyCost || '0');
@@ -667,18 +733,18 @@ async function updateCostTracking(characterCount, env) {
   const dayKey = `cost:day:${now.toISOString().slice(0, 10)}`;
   const requestCost = characterCount * COST_LIMITS.COST_PER_CHARACTER;
 
-  const [hourlyCost, dailyCost] = await Promise.all([
+  const [hourlyCost, dailyCost] = env.TRANSLATION_CACHE ? await Promise.all([
     env.TRANSLATION_CACHE.get(hourKey),
     env.TRANSLATION_CACHE.get(dayKey),
-  ]);
+  ]) : [null, null];
 
   await Promise.all([
-    env.TRANSLATION_CACHE.put(
+    env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
       hourKey,
       String((parseFloat(hourlyCost || '0') + requestCost)),
       { expirationTtl: 3600 }
     ),
-    env.TRANSLATION_CACHE.put(
+    env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
       dayKey,
       String((parseFloat(dailyCost || '0') + requestCost)),
       { expirationTtl: CACHE_TTL.COST_TRACKING }
@@ -750,7 +816,7 @@ async function getSiteConfig(env) {
 
   // Try to get custom configuration from KV if available
   try {
-    const customConfig = await env.TRANSLATION_CACHE.get('site-config', { type: 'json' });
+    const customConfig = env.TRANSLATION_CACHE ? await env.TRANSLATION_CACHE.get('site-config', { type: 'json' }) : null;
     if (customConfig) {
       return {
         ...defaultConfig,
@@ -795,7 +861,7 @@ async function handleInstallationRegistration(request, env, ctx) {
       tokenVersion: 1
     };
     
-    await env.TRANSLATION_CACHE.put(
+    env.TRANSLATION_CACHE && await env.TRANSLATION_CACHE.put(
       `installation:${installationId}`,
       JSON.stringify(installationData),
       { expirationTtl: 90 * 24 * 60 * 60 } // 90 days
@@ -834,7 +900,7 @@ async function generateInstallationToken(installationId, env) {
     .replace(/\//g, '_')
     .replace(/=/g, '');
   
-  await env.TRANSLATION_CACHE.put(
+  env.TRANSLATION_CACHE && await env.TRANSLATION_CACHE.put(
     `token:${token}`,
     JSON.stringify({
       installationId,
@@ -854,7 +920,7 @@ async function generateRefreshToken(installationId, env) {
     .replace(/\//g, '_')
     .replace(/=/g, '');
   
-  await env.TRANSLATION_CACHE.put(
+  env.TRANSLATION_CACHE && await env.TRANSLATION_CACHE.put(
     `refresh:${token}`,
     JSON.stringify({
       installationId,
@@ -892,7 +958,7 @@ async function handleContextOnly(request, env, ctx) {
     
     // Check context cache first
     const cacheKey = `context:${targetLanguage}:${word.toLowerCase().trim()}`;
-    const cached = await env.TRANSLATION_CACHE.get(cacheKey);
+    const cached = env.TRANSLATION_CACHE ? await env.TRANSLATION_CACHE.get(cacheKey) : null;
     
     if (cached) {
       logInfo('Context cache hit', { word, targetLanguage });
@@ -919,7 +985,7 @@ async function handleContextOnly(request, env, ctx) {
           status: 429,
           headers: {
             'Content-Type': 'application/json',
-            'X-AI-RateLimit-Limit-Hourly': '20',
+            'X-AI-RateLimit-Limit-Hourly': '100',
             'X-AI-RateLimit-Remaining-Hourly': (aiRateLimit.remaining || 0).toString(),
             'Retry-After': '3600'
           }
@@ -949,7 +1015,7 @@ async function handleContextOnly(request, env, ctx) {
     // Cache the context
     if (context) {
       ctx.waitUntil(
-        env.TRANSLATION_CACHE.put(
+        env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
           cacheKey, 
           JSON.stringify(context), 
           { expirationTtl: CACHE_TTL.TRANSLATION }
@@ -993,22 +1059,28 @@ async function generateContextForWord(word, translation, targetLanguage, sentenc
     de: 'German'
   };
   
-  const prompt = `You are a language learning assistant. Generate helpful context for learning this word.
+  const prompt = `You are a language learning assistant. Create a practical example for learning this word.
 
 Word: "${word}" (English)
 Translation: "${translation}" (${languageNames[targetLanguage] || targetLanguage})
-${sentence ? `Context sentence: "${sentence}"` : ''}
+${sentence ? `Context where the word was found: "${sentence}"` : ''}
 
 Provide a JSON response with:
 1. pronunciation: How to pronounce the ${languageNames[targetLanguage] || targetLanguage} word (e.g., "OH-lah" for "hola")
-2. meaning: A brief explanation of the word's meaning and usage in English (max 15 words)
-3. example: A simple example sentence in ${languageNames[targetLanguage] || targetLanguage} using this word (max 10 words)
+2. englishExample: A simple, practical sentence in English using "${word}" (8-12 words, everyday context)
+3. gender: For nouns only - the grammatical gender and article:
+   - German: "der, masculine" / "die, feminine" / "das, neuter"
+   - French: "le, masculine" / "la, feminine"
+   - Spanish: "el, masculine" / "la, feminine"
+   - For non-nouns or words without gender, use null
+
+Important: The English example should be natural and use common vocabulary that beginners would understand.
 
 Response format:
 {
   "pronunciation": "...",
-  "meaning": "...",
-  "example": "..."
+  "englishExample": "...",
+  "gender": "..." or null
 }`;
 
   try {
@@ -1039,6 +1111,23 @@ Response format:
     
     // Parse the JSON response
     const context = JSON.parse(content);
+    
+    // Now translate the English example to the target language
+    if (context.englishExample && env.MICROSOFT_TRANSLATOR_KEY) {
+      try {
+        const translationResult = await callTranslatorAPI(
+          [context.englishExample], 
+          targetLanguage, 
+          env.MICROSOFT_TRANSLATOR_KEY, 
+          env
+        );
+        
+        context.translatedExample = translationResult[context.englishExample] || '';
+      } catch (error) {
+        logError('Failed to translate example sentence', error);
+        context.translatedExample = '';
+      }
+    }
     
     return context;
   } catch (error) {

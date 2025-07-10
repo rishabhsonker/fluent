@@ -1,6 +1,7 @@
 // Fluent Service Worker - Handles storage, caching, and API calls
 'use strict';
 
+
 import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS, API_CONFIG } from '../lib/constants.js';
 import { validator } from '../lib/validator.js';
 import { logger } from '../lib/logger.js';
@@ -10,6 +11,16 @@ import { InstallationAuth } from '../lib/installationAuth.js';
 import { contentScriptManager } from './contentScriptManager.js';
 import { offlineManager } from '../lib/offlineManager.js';
 import type { UserSettings, SiteSettings, LanguageCode } from '../types';
+
+
+// Global error handlers
+self.addEventListener('error', (event) => {
+  logger.error('[Service Worker] Global error:', event.error);
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  logger.error('[Service Worker] Unhandled promise rejection:', event.reason);
+});
 
 interface CacheStats {
   hits: number;
@@ -51,23 +62,31 @@ const state: ServiceWorkerState = {
 
 // Initialize on install
 chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledDetails) => {
-  logger.info('Extension installed', details.reason);
+  logger.info('[Service Worker] Extension installed/updated', {
+    reason: details.reason,
+    previousVersion: details.previousVersion
+  });
   
   // Set default settings and initialize installation auth
   if (details.reason === 'install') {
-    await chrome.storage.local.set({
+    logger.info('[Service Worker] First installation - setting defaults and initializing auth');
+    await chrome.storage.sync.set({
       [STORAGE_KEYS.USER_SETTINGS]: DEFAULT_SETTINGS,
       [STORAGE_KEYS.SITE_SETTINGS]: {}
     });
     
     // Initialize installation authentication
+    // TEMPORARY: Skip installation auth while using debug auth
+    /*
     try {
+      logger.info('[Service Worker] Starting installation auth initialization...');
       await InstallationAuth.initialize();
-      logger.info('Installation auth initialized successfully');
+      logger.info('[Service Worker] Installation auth initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize installation authentication:', error);
+      logger.error('[Service Worker] Failed to initialize installation authentication:', error);
       // Continue without authentication - user can still use their own API key
     }
+    */
   }
   
   // Migrate API keys from old storage on update
@@ -75,6 +94,8 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
     await secureCrypto.migrateFromOldStorage();
     
     // Initialize installation auth if not already done
+    // TEMPORARY: Skip installation auth while using debug auth
+    /*
     try {
       const installationData = await InstallationAuth.getInstallationData();
       if (!installationData) {
@@ -84,13 +105,12 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
       logger.error('Failed to initialize authentication on update:', error);
       // Continue without authentication
     }
+    */
   }
   
   // Load settings
   await loadSettings();
   
-  // Log loaded settings for debugging
-  logger.info('Settings loaded on install/update:', state.settings);
 });
 
 // Load settings from storage
@@ -114,7 +134,6 @@ async function loadSettings(): Promise<void> {
       }
     }
     
-    logger.debug('Settings loaded', state.settings);
   } catch (error) {
     logger.error('Error loading settings', error);
   }
@@ -122,21 +141,22 @@ async function loadSettings(): Promise<void> {
 
 // Secure message handling
 chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
-  logger.debug('Received message:', request.type);
+  
   
   // Handle async responses
   (async () => {
     try {
+      
       // Validate message security
-      logger.debug('Validating message...');
       securityManager.validateMessage(request, sender);
       
-      logger.debug('Handling message...');
       const response = await handleMessage(request, sender);
       
-      logger.debug('Creating secure response...');
+      
       // Create secure response
       const secureResponse = await securityManager.createSecureMessage('response', response);
+      
+      
       sendResponse(secureResponse);
     } catch (error) {
       logger.error('Message handler error', error);
@@ -149,6 +169,7 @@ chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.Messa
 
 // Handle different message types
 async function handleMessage(request: any, sender: chrome.runtime.MessageSender): Promise<any> {
+  
   switch (request.type) {
     case 'GET_SETTINGS':
       return getSettingsForTab(sender.tab);
@@ -160,10 +181,6 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
       return updateSiteSettings(request.hostname, request.settings);
       
     case 'GET_TRANSLATIONS':
-      logger.info('GET_TRANSLATIONS request:', { 
-        words: request.words, 
-        language: request.language 
-      });
       return getTranslations(request.words, request.language);
       
     case 'LOG_PERFORMANCE':
@@ -204,16 +221,6 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
     case 'GET_RATE_LIMITS':
       return getRateLimits();
       
-    case 'DEBUG_RESET_AUTH':
-      // Debug: Clear and reinitialize auth
-      try {
-        await InstallationAuth.clear();
-        await InstallationAuth.initialize();
-        return { success: true, message: 'Auth reset and reinitialized' };
-      } catch (error) {
-        logger.error('Failed to reset auth:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-      }
       
     default:
       throw new Error(`Unknown message type: ${request.type}`);
@@ -243,12 +250,6 @@ async function getSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<any>
   const now = Date.now();
   const globallyPaused = state.settings?.pausedUntil && state.settings.pausedUntil > now;
   
-  logger.debug('Returning settings for tab:', {
-    settings: state.settings,
-    siteSettings,
-    siteEnabled: siteEnabled && !globallyPaused,
-    hostname
-  });
   
   return {
     settings: { ...state.settings, ...siteSettings },
@@ -259,10 +260,12 @@ async function getSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<any>
 
 // Update global settings
 async function updateSettings(newSettings: Partial<UserSettings>): Promise<{ success: boolean }> {
+  
   // Ensure we have current settings loaded
   if (!state.settings) {
     await loadSettings();
   }
+  
   
   // Merge with existing settings
   const mergedSettings = { ...state.settings, ...newSettings };
@@ -271,11 +274,15 @@ async function updateSettings(newSettings: Partial<UserSettings>): Promise<{ suc
   const validated = validator.validateSettings(mergedSettings);
   state.settings = validated;
   
-  logger.info('Updating settings:', validated);
   
   await chrome.storage.sync.set({
     [STORAGE_KEYS.USER_SETTINGS]: state.settings
   });
+  
+  // Verify save worked
+  const saved = await chrome.storage.sync.get(STORAGE_KEYS.USER_SETTINGS);
+  
+  
   return { success: true };
 }
 
@@ -302,21 +309,9 @@ async function updateSiteSettings(hostname: string, settings: Partial<SiteSettin
 
 // Get translations (with caching and API calls)
 async function getTranslations(words: string[], language: string): Promise<any> {
+  
   // Ensure installation auth is initialized
-  const installationData = await InstallationAuth.getInstallationData();
-  if (!installationData) {
-    logger.warn('No installation data found, attempting to initialize...');
-    try {
-      await InstallationAuth.initialize();
-      logger.info('Installation auth initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize installation auth:', error);
-      return { 
-        translations: {}, 
-        error: 'Extension not properly initialized. Please reload the extension.' 
-      };
-    }
-  }
+  // TEMPORARY: Skip installation auth check while using debug auth
   
   // Dynamically import the translator module
   const { translator } = await import('../lib/simpleTranslator');
@@ -330,10 +325,6 @@ async function getTranslations(words: string[], language: string): Promise<any> 
   }
   
   try {
-    logger.info('About to call translator.translate', {
-      words: validWords,
-      language: validLanguage
-    });
     // Use the translator service which handles caching internally
     const result = await translator.translate(validWords, validLanguage as LanguageCode);
     
@@ -342,7 +333,6 @@ async function getTranslations(words: string[], language: string): Promise<any> 
     state.cacheStats.hits += cacheInfo.hits;
     state.cacheStats.misses += cacheInfo.misses;
     
-    logger.info('Translation result:', result);
     return result;
   } catch (error) {
     logger.error('Translation error:', error);
@@ -399,6 +389,7 @@ function getCacheStats(): { cacheSize: number; hitRate: number; hits: number; mi
 
 // Get context for a word
 async function getContext(word: string, translation: string, language: string, sentence?: string): Promise<any> {
+  
   try {
     // Dynamically import the translator module
     const { translator } = await import('../lib/simpleTranslator');
@@ -406,6 +397,7 @@ async function getContext(word: string, translation: string, language: string, s
     // Validate inputs
     const validLanguage = validator.validateLanguage(language);
     const validWord = validator.validateWord(word);
+    
     
     if (!validWord) {
       return { context: null, error: 'Invalid word' };
@@ -447,8 +439,6 @@ async function cleanupOldStats(): Promise<void> {
   }
 }
 
-// DEBUG: Log when service worker starts
-logger.info('Service Worker starting...');
 
 // Listen for storage changes to keep state in sync
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -456,7 +446,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     const newSettings = changes[STORAGE_KEYS.USER_SETTINGS].newValue;
     if (newSettings) {
       state.settings = validator.validateSettings(newSettings);
-      logger.info('Settings updated from storage change:', state.settings);
     }
   }
 });
@@ -711,13 +700,11 @@ async function getRateLimits(): Promise<any> {
 (async () => {
   try {
     await loadSettings();
-    logger.info('Service worker initialized with settings:', state.settings);
     
     // Ensure InstallationAuth is initialized
     try {
       const installationData = await InstallationAuth.getInstallationData();
       if (!installationData) {
-        logger.info('Initializing installation auth on service worker startup');
         await InstallationAuth.initialize();
       }
     } catch (error) {

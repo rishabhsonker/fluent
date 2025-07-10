@@ -124,55 +124,88 @@ body span.fluent-word:hover,
 }
 
 .fluent-tooltip-translation {
-  font-size: 20px;
+  font-size: 18px;
   color: #60a5fa;
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .fluent-tooltip-pronunciation {
-  font-size: 13px;
+  font-size: 18px;
   color: #9ca3af;
-  margin-bottom: 4px;
-  text-align: center;
+  font-weight: 400;
   font-style: normal;
+  display: inline;
+}
+
+.fluent-tooltip-translation-word {
+  font-size: 18px;
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+/* Separator between translation word and pronunciation */
+.fluent-tooltip-pronunciation::before {
+  content: '✴';
+  display: inline-block;
+  margin: 0 6px;
+  color: #9ca3af;
+  opacity: 0.7;
+  font-size: 12px;
+  vertical-align: baseline;
+  position: relative;
+  top: -2px;
 }
 
 .fluent-tooltip-word-mapping {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 12px;
-  text-align: center;
-  font-style: italic;
-}
-
-.fluent-tooltip-meaning {
-  font-size: 14px;
-  color: #e5e7eb;
-  margin-bottom: 10px;
-  line-height: 1.5;
-  padding: 8px;
-  background: rgba(55, 65, 81, 0.5);
-  border-radius: 6px;
-}
-
-.fluent-tooltip-example {
   font-size: 13px;
-  color: #93c5fd;
+  color: #9ca3af;
   margin-bottom: 10px;
+  text-align: center;
   font-style: normal;
-  line-height: 1.5;
-  padding: 8px;
-  background: rgba(59, 130, 246, 0.1);
+  padding: 5px 8px;
+  display: block;
+  background: rgba(107, 114, 128, 0.1);
   border-radius: 6px;
-  border-left: 3px solid #3b82f6;
+  line-height: 1.4;
+}
+
+/* Divider between sections - hidden */
+.fluent-tooltip-divider {
+  display: none;
+}
+
+/* Example sentences */
+.fluent-tooltip-example-english,
+.fluent-tooltip-example-translated {
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 4px 0;
+  display: block;
+}
+
+.fluent-tooltip-example-english {
+  color: #e5e7eb;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+.fluent-tooltip-example-translated {
+  color: #60a5fa;
+  margin-bottom: 0;
+  font-weight: 500;
 }
 
 /* Progress bar for word mastery */
 .fluent-tooltip-progress {
-  margin-top: 12px;
-  display: none;
+  margin-top: 8px;
+  padding-top: 8px;
 }
 
 .fluent-tooltip-progress-bar {
@@ -551,8 +584,6 @@ body span.fluent-word:hover,
   border-radius: 6px;
   position: relative;
   overflow: hidden;
-  padding: 0.25em 0.5em;
-  margin: 0.1em 0;
 }
 
 .fluent-skeleton-text {
@@ -560,11 +591,13 @@ body span.fluent-word:hover,
   width: 100%;
   min-width: 140px;
   display: block;
+  padding: 4px 8px;
 }
 
 .fluent-skeleton-full {
   min-width: 220px;
   height: 1.2em;
+  padding: 4px 8px;
 }
 
 @keyframes fluent-skeleton-pulse {
@@ -583,11 +616,25 @@ body span.fluent-word:hover,
 }
 
 /* Better spacing for tooltip sections with loading states */
-.fluent-tooltip-pronunciation.fluent-tooltip-loading,
 .fluent-tooltip-meaning.fluent-tooltip-loading,
 .fluent-tooltip-example.fluent-tooltip-loading {
   padding: 0;
   margin: 0.3em 0;
+}
+
+/* Inline loading state for pronunciation */
+.fluent-tooltip-pronunciation.fluent-tooltip-loading {
+  display: inline-block;
+}
+
+.fluent-tooltip-pronunciation.fluent-tooltip-loading::before {
+  display: none; /* Hide separator when loading */
+}
+
+.fluent-tooltip-pronunciation.fluent-tooltip-loading .fluent-skeleton {
+  min-width: 100px;
+  display: inline-block;
+  margin-left: 8px;
 }
 
 /* Print styles */

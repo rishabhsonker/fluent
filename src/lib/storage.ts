@@ -40,6 +40,16 @@ class StorageManager {
     this.listeners = new Map();
   }
 
+  // Determine which storage area to use based on key
+  private getStorageArea(key: string): chrome.storage.StorageArea {
+    // User settings and site settings should use sync storage for cross-device sync
+    if (key === STORAGE_KEYS.USER_SETTINGS || key === STORAGE_KEYS.SITE_SETTINGS) {
+      return chrome.storage.sync;
+    }
+    // Everything else uses local storage for larger capacity
+    return chrome.storage.local;
+  }
+
   // Get data from storage with fallback
   async get<T = any>(key: string, defaultValue: T | null = null): Promise<T | null> {
     try {
@@ -48,8 +58,9 @@ class StorageManager {
         return this.cache.get(key);
       }
 
-      // Get from Chrome storage (using local for larger capacity)
-      const result = await chrome.storage.local.get(key);
+      // Determine which storage area to use based on key
+      const storageArea = this.getStorageArea(key);
+      const result = await storageArea.get(key);
       const value = result[key] ?? defaultValue;
       
       // Update cache
@@ -68,8 +79,9 @@ class StorageManager {
       // Update cache immediately
       this.cache.set(key, value);
       
-      // Save to Chrome storage (using local for larger capacity)
-      await chrome.storage.local.set({ [key]: value });
+      // Determine which storage area to use based on key
+      const storageArea = this.getStorageArea(key);
+      await storageArea.set({ [key]: value });
       
       // Notify listeners
       this.notifyListeners(key, value);
@@ -86,14 +98,32 @@ class StorageManager {
   // Get multiple keys at once
   async getMultiple<T = any>(keys: string[]): Promise<Record<string, T>> {
     try {
-      const result = await chrome.storage.local.get(keys);
+      // Group keys by storage area
+      const syncKeys = keys.filter(key => 
+        key === STORAGE_KEYS.USER_SETTINGS || key === STORAGE_KEYS.SITE_SETTINGS
+      );
+      const localKeys = keys.filter(key => 
+        key !== STORAGE_KEYS.USER_SETTINGS && key !== STORAGE_KEYS.SITE_SETTINGS
+      );
+      
+      // Get from both storage areas
+      const promises: Promise<any>[] = [];
+      if (syncKeys.length > 0) {
+        promises.push(chrome.storage.sync.get(syncKeys));
+      }
+      if (localKeys.length > 0) {
+        promises.push(chrome.storage.local.get(localKeys));
+      }
+      
+      const results = await Promise.all(promises);
+      const combined = Object.assign({}, ...results);
       
       // Update cache
-      for (const [key, value] of Object.entries(result)) {
+      for (const [key, value] of Object.entries(combined)) {
         this.cache.set(key, value);
       }
       
-      return result;
+      return combined;
     } catch (error) {
       logger.error('Storage getMultiple error:', error);
       return {};
@@ -104,7 +134,8 @@ class StorageManager {
   async remove(key: string): Promise<boolean> {
     try {
       this.cache.delete(key);
-      await chrome.storage.local.remove(key);
+      const storageArea = this.getStorageArea(key);
+      await storageArea.remove(key);
       this.notifyListeners(key, undefined);
       return true;
     } catch (error) {
@@ -117,7 +148,11 @@ class StorageManager {
   async clear(): Promise<boolean> {
     try {
       this.cache.clear();
-      await chrome.storage.local.clear();
+      // Clear both storage areas
+      await Promise.all([
+        chrome.storage.local.clear(),
+        chrome.storage.sync.clear()
+      ]);
       return true;
     } catch (error) {
       logger.error('Storage clear error:', error);
@@ -158,13 +193,23 @@ class StorageManager {
   // Get storage usage
   async getUsage(): Promise<StorageUsage> {
     try {
-      const bytesInUse = await chrome.storage.local.getBytesInUse();
-      const quota = chrome.storage.local.QUOTA_BYTES || 10485760; // 10MB default
+      // Get usage from both storage areas
+      const [localBytes, syncBytes] = await Promise.all([
+        chrome.storage.local.getBytesInUse(),
+        chrome.storage.sync.getBytesInUse()
+      ]);
+      
+      // Get quotas
+      const localQuota = chrome.storage.local.QUOTA_BYTES || 10485760; // 10MB default
+      const syncQuota = chrome.storage.sync.QUOTA_BYTES || 102400; // 100KB default
+      
+      const totalUsed = localBytes + syncBytes;
+      const totalQuota = localQuota + syncQuota;
       
       return {
-        used: bytesInUse,
-        total: quota,
-        percentage: (bytesInUse / quota) * 100
+        used: totalUsed,
+        total: totalQuota,
+        percentage: (totalUsed / totalQuota) * 100
       };
     } catch (error) {
       logger.error('Storage usage error:', error);

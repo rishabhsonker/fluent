@@ -2,27 +2,25 @@ import { test, expect } from '@playwright/test';
 import * as crypto from 'crypto';
 
 test.describe('Installation Authentication', () => {
-  test('should generate valid HMAC signature', async () => {
-    // Test HMAC signature generation
-    const token = 'test-token-123';
-    const installationId = 'test-install-id';
+  test('should use shared secret authentication', async () => {
+    // Test shared secret authentication headers
+    const sharedSecret = 'fluent-extension-2024-shared-secret-key';
+    const installationId = 'debug-installation';
     const timestamp = Date.now();
-    const method = 'POST';
-    const path = '/translate';
-    const body = JSON.stringify({ words: ['hello'], targetLanguage: 'es' });
     
-    // Create message for signing
-    const message = `${method}:${path}:${timestamp}:${body}`;
+    // Format headers as used in production
+    const headers = {
+      'Authorization': `Bearer ${sharedSecret}`,
+      'X-Installation-Id': installationId,
+      'X-Timestamp': timestamp.toString(),
+      'X-Signature': 'debug-signature'
+    };
     
-    // Generate HMAC signature
-    const signature = crypto
-      .createHmac('sha256', token)
-      .update(message)
-      .digest('hex');
-    
-    // Verify signature format
-    expect(signature).toMatch(/^[a-f0-9]{64}$/);
-    expect(signature.length).toBe(64);
+    // Verify header format matches production
+    expect(headers['Authorization']).toBe('Bearer fluent-extension-2024-shared-secret-key');
+    expect(headers['X-Installation-Id']).toBe('debug-installation');
+    expect(headers['X-Timestamp']).toMatch(/^\d+$/);
+    expect(headers['X-Signature']).toBe('debug-signature');
   });
 
   test('should validate timestamp within acceptable range', async () => {

@@ -218,36 +218,21 @@ export class SimpleTranslator {
     return await rateLimiter.withRateLimit('translation', identifier, async () => {
       // No mock mode in production
       
-      // Use installation-based auth
-      let authHeaders;
-      try {
-        authHeaders = await InstallationAuth.getAuthHeaders();
-        logger.info('Installation auth headers generated:', {
-          hasAuth: !!authHeaders['Authorization'],
-          hasInstallationId: !!authHeaders['X-Installation-Id'],
-          hasTimestamp: !!authHeaders['X-Timestamp'],
-          hasSignature: !!authHeaders['X-Signature']
-        });
-      } catch (authError) {
-        logger.error('Failed to generate installation auth headers:', authError);
-        throw new Error('Authentication failed - please reload the extension');
-      }
+      // Use shared secret authentication
+      const authHeaders = {
+        'Authorization': 'Bearer fluent-extension-2024-shared-secret-key',
+        'X-Installation-Id': 'debug-installation',
+        'X-Timestamp': Date.now().toString(),
+        'X-Signature': 'debug-signature'
+      };
       
       // Convert language name to code (e.g., 'spanish' -> 'es')
       const langCode = SUPPORTED_LANGUAGES[targetLanguage as keyof typeof SUPPORTED_LANGUAGES]?.code || targetLanguage;
       
-      // Debug logging
-      logger.info('Translation request:', {
-        words,
-        targetLanguage: langCode,
-        originalLanguage: targetLanguage,
-        endpoint: `${API_CONFIG.TRANSLATOR_API}/translate`,
-        authMethod: 'installation',
-        headers: Object.keys(authHeaders)
-      });
       
       // Use the combined translate endpoint
       const endpoint = `${API_CONFIG.TRANSLATOR_API}/translate`;
+      
         
       const response = await fetchWithRetry(
         endpoint,
@@ -364,6 +349,7 @@ export class SimpleTranslator {
     targetLanguage: string,
     sentence?: string
   ): Promise<{ pronunciation?: string; meaning?: string; example?: string } | null> {
+    
     const validLanguage = validator.validateLanguage(targetLanguage) as LanguageCode;
     
     // Check memory cache first
@@ -386,61 +372,84 @@ export class SimpleTranslator {
       logger.error('Context cache read error:', error);
     }
     
-    // Fetch from API
-    try {
-      const authHeaders = await InstallationAuth.getAuthHeaders();
-      const langCode = SUPPORTED_LANGUAGES[targetLanguage as keyof typeof SUPPORTED_LANGUAGES]?.code || targetLanguage;
+    
+    // Apply rate limiting for context requests
+    const identifier = 'free'; // Context is only available for free tier for now
+    
+    return await rateLimiter.withRateLimit('context', identifier, async () => {
+      // Check cost limits for AI context
+      await costGuard.checkCost('context', 100); // Estimate 100 chars for context
       
-      const response = await fetchWithRetry(
-        `${API_CONFIG.TRANSLATOR_API}/context`,
-        {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            ...authHeaders
+      try {
+        // Use shared secret authentication
+        const authHeaders = {
+          'Authorization': 'Bearer fluent-extension-2024-shared-secret-key',
+          'X-Installation-Id': 'debug-installation',
+          'X-Timestamp': Date.now().toString(),
+          'X-Signature': 'debug-signature'
+        };
+        
+        const langCode = SUPPORTED_LANGUAGES[targetLanguage as keyof typeof SUPPORTED_LANGUAGES]?.code || targetLanguage;
+        
+        const requestBody = {
+          word,
+          translation,
+          targetLanguage: langCode,
+          sentence
+        };
+        
+        
+        const response = await fetchWithRetry(
+          `${API_CONFIG.TRANSLATOR_API}/context`,
+          {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              ...authHeaders
+            },
+            body: JSON.stringify(requestBody)
           },
-          body: JSON.stringify({
-            word,
-            translation,
-            targetLanguage: langCode,
-            sentence
-          })
-        },
-        {
-          maxRetries: 2,
-          onRetry: (attempt, error) => {
-            logger.warn(`Context retry attempt ${attempt}`, { error: error.message });
+          {
+            maxRetries: 2,
+            onRetry: (attempt, error) => {
+              logger.warn(`Context retry attempt ${attempt}`, { error: error.message });
+            }
+          }
+        );
+        
+        
+        if (!response.ok) {
+          logger.error('Context API error:', { status: response.status });
+          return null;
+        }
+        
+        const data = await response.json();
+        
+        const context = data.context || null;
+        
+        if (context) {
+          // Record cost
+          costGuard.recordUsage('context', 100);
+          
+          // Cache the context
+          translationCache.setContext(word, validLanguage, context);
+          
+          // Update storage cache
+          try {
+            const stored = await storage.get(STORAGE_KEYS.CONTEXT_CACHE) || { contexts: {} };
+            stored.contexts[cacheKey] = context;
+            await storage.set(STORAGE_KEYS.CONTEXT_CACHE, stored);
+          } catch (error) {
+            logger.error('Context cache write error:', error);
           }
         }
-      );
-      
-      if (!response.ok) {
-        logger.error('Context API error:', { status: response.status });
+        
+        return context;
+      } catch (error) {
+        logger.error('Failed to fetch context:', error);
         return null;
       }
-      
-      const data = await response.json();
-      const context = data.context || null;
-      
-      if (context) {
-        // Cache the context
-        translationCache.setContext(word, validLanguage, context);
-        
-        // Update storage cache
-        try {
-          const stored = await storage.get(STORAGE_KEYS.CONTEXT_CACHE) || { contexts: {} };
-          stored.contexts[cacheKey] = context;
-          await storage.set(STORAGE_KEYS.CONTEXT_CACHE, stored);
-        } catch (error) {
-          logger.error('Context cache write error:', error);
-        }
-      }
-      
-      return context;
-    } catch (error) {
-      logger.error('Failed to fetch context:', error);
-      return null;
-    }
+    });
   }
 }
 

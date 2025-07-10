@@ -2,6 +2,7 @@
 // Fluent Content Script - Performance-first design
 // Target: <50ms processing time, <30MB memory usage
 
+
 import { logger } from '../lib/logger.js';
 import { API_CONFIG } from '../lib/constants.js';
 import type { UserSettings, LanguageCode } from '../types';
@@ -9,6 +10,7 @@ import type { Tooltip } from './tooltip';
 import type { PageControl } from './PageControl';
 import type { WordReplacer } from './replacer';
 import type { TextProcessor } from './textProcessor';
+
 
 declare global {
   interface Window {
@@ -441,6 +443,8 @@ interface SiteConfig {
 
   // Initialize components and styles
   async function initializeExtension(): Promise<void> {
+    logger.debug('Initializing extension');
+    
     try {
       // Load CSS
       const link = document.createElement('link');

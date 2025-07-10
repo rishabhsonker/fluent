@@ -28,9 +28,14 @@ class Logger {
   private readonly maxHistorySize: number;
 
   constructor() {
-    // Set based on environment - can be overridden by env variable
-    this.isDevelopment = import.meta.env.DEV || 
-                        import.meta.env.VITE_FLUENT_DEBUG === 'true';
+    // Chrome Extensions don't support import.meta.env properly
+    // For debugging, we'll check if we're in development by looking at the manifest
+    try {
+      const manifest = chrome?.runtime?.getManifest?.();
+      this.isDevelopment = manifest?.version?.includes('dev') || manifest?.version === '0.0.0' || false;
+    } catch {
+      this.isDevelopment = false;
+    }
     
     // Log levels
     this.levels = {
@@ -41,11 +46,15 @@ class Logger {
     };
     
     // Set log level based on environment
-    this.currentLevel = this.isDevelopment ? this.levels.DEBUG : this.levels.ERROR;
+    // In production, only show errors
+    const isProduction = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
+    this.currentLevel = isProduction ? this.levels.ERROR : this.levels.INFO;
     
     // Log history for debugging (limited size)
     this.history = [];
-    this.maxHistorySize = 50; // Reduced for production
+    this.maxHistorySize = 50;
+    
+    // Don't log initialization in production
   }
 
   // Set log level
@@ -73,6 +82,12 @@ class Logger {
     // Only output if level is enabled
     if (this.levels[level] <= this.currentLevel) {
       const prefix = `[Fluent ${level}]`;
+      
+      // In production, suppress all logs except errors
+      const isProduction = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
+      if (isProduction && level !== 'ERROR') {
+        return;
+      }
       
       switch (level) {
         case 'ERROR':

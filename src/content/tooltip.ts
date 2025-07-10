@@ -76,30 +76,41 @@ export class Tooltip {
   private buildTooltipDOM(): void {
     if (!this.element) return;
 
-    // Translation (main word)
-    const translation = document.createElement('div');
-    translation.className = 'fluent-tooltip-translation';
-    this.element.appendChild(translation);
+    // Translation container (will hold both word and pronunciation)
+    const translationContainer = document.createElement('div');
+    translationContainer.className = 'fluent-tooltip-translation';
     
-    // Pronunciation
-    const pronunciation = document.createElement('div');
+    // Translation word span
+    const translationWord = document.createElement('span');
+    translationWord.className = 'fluent-tooltip-translation-word';
+    translationContainer.appendChild(translationWord);
+    
+    // Pronunciation span (inside translation container)
+    const pronunciation = document.createElement('span');
     pronunciation.className = 'fluent-tooltip-pronunciation';
-    this.element.appendChild(pronunciation);
+    translationContainer.appendChild(pronunciation);
+    
+    this.element.appendChild(translationContainer);
     
     // Word mapping (spanish-word = english-word)
     const wordMapping = document.createElement('div');
     wordMapping.className = 'fluent-tooltip-word-mapping';
     this.element.appendChild(wordMapping);
     
-    // Meaning
-    const meaning = document.createElement('div');
-    meaning.className = 'fluent-tooltip-meaning';
-    this.element.appendChild(meaning);
+    // Divider
+    const divider1 = document.createElement('div');
+    divider1.className = 'fluent-tooltip-divider';
+    this.element.appendChild(divider1);
     
-    // Example
-    const example = document.createElement('div');
-    example.className = 'fluent-tooltip-example';
-    this.element.appendChild(example);
+    // English example
+    const englishExample = document.createElement('div');
+    englishExample.className = 'fluent-tooltip-example-english';
+    this.element.appendChild(englishExample);
+    
+    // Translated example
+    const translatedExample = document.createElement('div');
+    translatedExample.className = 'fluent-tooltip-example-translated';
+    this.element.appendChild(translatedExample);
     
     // Progress
     const progress = document.createElement('div');
@@ -169,11 +180,14 @@ export class Tooltip {
     
     this.eventHandlers.windowScroll = () => {
       if (this.isVisible && this.element) {
+        // Update position immediately during scroll to keep tooltip aligned
+        this.updatePosition();
+        
+        // Optional: Add subtle opacity change for visual feedback
         this.element.classList.add('fluent-opacity-low');
         if (this.scrollTimeout) clearTimeout(this.scrollTimeout);
         this.scrollTimeout = window.setTimeout(() => {
           if (this.isVisible && this.element) {
-            this.updatePosition();
             this.element.classList.remove('fluent-opacity-low');
             this.element.classList.add('fluent-opacity-full');
           }
@@ -232,6 +246,15 @@ export class Tooltip {
       const meaning = element.getAttribute('data-fluent-meaning');
       const example = element.getAttribute('data-fluent-example');
       
+      logger.info('[Tooltip] Attribute values:', {
+        original,
+        translation,
+        pronunciation,
+        meaning,
+        example,
+        pronunciationIsNull: pronunciation === null,
+        pronunciationIsUndefined: pronunciation === undefined
+      });
       
       if (!original || !translation) {
         logger.error('Missing tooltip data!');
@@ -259,13 +282,21 @@ export class Tooltip {
         translation, 
         language, 
         pronunciation || undefined,  // null/empty string becomes undefined
-        meaning || undefined,        // null/empty string becomes undefined
-        example || undefined         // null/empty string becomes undefined
+        undefined,                   // englishExample - will be fetched
+        undefined                    // translatedExample - will be fetched
       );
       
       // Show and position
       this.show();
       this.updatePosition();
+      
+      // Update position again after a brief delay to ensure proper calculation
+      // This handles cases where the browser needs time to render
+      setTimeout(() => {
+        if (this.isVisible) {
+          this.updatePosition();
+        }
+      }, 10);
     }, delay);
   }
 
@@ -274,31 +305,42 @@ export class Tooltip {
     translation: string, 
     language: LanguageCode,
     pronunciation?: string | null,
-    meaning?: string | null,
-    example?: string | null
+    englishExample?: string | null,
+    translatedExample?: string | null,
+    gender?: string | null
   ): Promise<void> {
+    logger.info('[Tooltip] updateContent called:', {
+      original,
+      translation,
+      language,
+      pronunciation,
+      englishExample,
+      translatedExample,
+      gender
+    });
+    
     if (!this.element) return;
 
-    const translationElement = this.element.querySelector('.fluent-tooltip-translation');
+    const translationWordElement = this.element.querySelector('.fluent-tooltip-translation-word');
     const pronunciationElement = this.element.querySelector('.fluent-tooltip-pronunciation');
     const wordMappingElement = this.element.querySelector('.fluent-tooltip-word-mapping');
-    const meaningElement = this.element.querySelector('.fluent-tooltip-meaning');
-    const exampleElement = this.element.querySelector('.fluent-tooltip-example');
+    const englishExampleElement = this.element.querySelector('.fluent-tooltip-example-english');
+    const translatedExampleElement = this.element.querySelector('.fluent-tooltip-example-translated');
 
-    // 1. Show translated word (larger, prominent)
-    if (translationElement) translationElement.textContent = translation;
+    // 1. Show translated word
+    if (translationWordElement) translationWordElement.textContent = translation;
     
-    // 2. Show pronunciation or loading state
+    // 2. Show pronunciation inline with translation
     if (pronunciationElement instanceof HTMLElement) {
       if (pronunciation) {
         pronunciationElement.textContent = pronunciation;
         pronunciationElement.classList.remove('fluent-tooltip-loading');
-        pronunciationElement.style.display = 'block';
+        pronunciationElement.style.display = 'inline';
       } else if (pronunciation === undefined) {
-        // Show loading skeleton
+        // Show loading skeleton inline
         pronunciationElement.innerHTML = '<span class="fluent-skeleton fluent-skeleton-text"></span>';
         pronunciationElement.classList.add('fluent-tooltip-loading');
-        pronunciationElement.style.display = 'block';
+        pronunciationElement.style.display = 'inline';
       } else {
         pronunciationElement.style.display = 'none';
       }
@@ -306,47 +348,69 @@ export class Tooltip {
     
     // 2.5. Show word mapping
     if (wordMappingElement instanceof HTMLElement) {
-      wordMappingElement.textContent = `${translation} = ${original}`;
+      const languageNames: Record<LanguageCode, string> = {
+        spanish: 'Spanish',
+        french: 'French',
+        german: 'German'
+      };
+      const languageName = languageNames[language] || language;
+      
+      // Include gender information if available
+      let genderInfo = '';
+      if (gender) {
+        genderInfo = ` (${gender})`;
+      }
+      
+      wordMappingElement.textContent = `⁂  "${translation}"${genderInfo} means "${original}" in ${languageName}`;
       wordMappingElement.style.display = 'block';
     }
     
-    // 3. Show meaning or loading state
-    if (meaningElement instanceof HTMLElement) {
-      if (meaning) {
-        meaningElement.textContent = meaning;
-        meaningElement.classList.remove('fluent-tooltip-loading');
-        meaningElement.style.display = 'block';
-      } else if (meaning === undefined) {
-        // Show loading skeleton with fallback text
-        meaningElement.innerHTML = `<span class="fluent-skeleton fluent-skeleton-text">${original} = ${translation}</span>`;
-        meaningElement.classList.add('fluent-tooltip-loading');
-        meaningElement.style.display = 'block';
+    // 3. Show English example or loading state
+    if (englishExampleElement instanceof HTMLElement) {
+      if (englishExample) {
+        englishExampleElement.textContent = `🔖  ${englishExample}`;
+        englishExampleElement.classList.remove('fluent-tooltip-loading');
+        englishExampleElement.style.display = 'block';
+      } else if (englishExample === undefined) {
+        // Show loading skeleton
+        englishExampleElement.innerHTML = '🔖  <span class="fluent-skeleton fluent-skeleton-text fluent-skeleton-full"></span>';
+        englishExampleElement.classList.add('fluent-tooltip-loading');
+        englishExampleElement.style.display = 'block';
       } else {
-        meaningElement.textContent = `${original} = ${translation}`;
-        meaningElement.classList.remove('fluent-tooltip-loading');
-        meaningElement.style.display = 'block';
+        englishExampleElement.style.display = 'none';
       }
     }
     
-    // 4. Show contextual example or loading state
-    if (exampleElement instanceof HTMLElement) {
-      if (example) {
-        exampleElement.textContent = example;
-        exampleElement.classList.remove('fluent-tooltip-loading');
-        exampleElement.style.display = 'block';
-      } else if (example === undefined) {
+    // 4. Show translated example or loading state
+    if (translatedExampleElement instanceof HTMLElement) {
+      if (translatedExample) {
+        translatedExampleElement.textContent = `📮  ${translatedExample}`;
+        translatedExampleElement.classList.remove('fluent-tooltip-loading');
+        translatedExampleElement.style.display = 'block';
+      } else if (translatedExample === undefined) {
         // Show loading skeleton
-        exampleElement.innerHTML = '<span class="fluent-skeleton fluent-skeleton-text fluent-skeleton-full"></span>';
-        exampleElement.classList.add('fluent-tooltip-loading');
-        exampleElement.style.display = 'block';
+        translatedExampleElement.innerHTML = `📮  <span class="fluent-skeleton fluent-skeleton-text fluent-skeleton-full"></span>`;
+        translatedExampleElement.classList.add('fluent-tooltip-loading');
+        translatedExampleElement.style.display = 'block';
       } else {
-        exampleElement.style.display = 'none';
+        translatedExampleElement.style.display = 'none';
       }
     }
     
     // Fetch context asynchronously if not provided
-    if (pronunciation === undefined || meaning === undefined || example === undefined) {
-      this.fetchContextAsync(original, translation, language);
+    logger.info('[Tooltip] Context check:', {
+      pronunciation,
+      englishExample,
+      translatedExample,
+      pronunciationUndefined: pronunciation === undefined,
+      englishExampleUndefined: englishExample === undefined,
+      translatedExampleUndefined: translatedExample === undefined,
+      shouldFetchContext: pronunciation === undefined || englishExample === undefined || translatedExample === undefined
+    });
+    
+    if (pronunciation === undefined || englishExample === undefined || translatedExample === undefined) {
+      logger.info('[Tooltip] Triggering async context fetch');
+      this.fetchContextAsync(original, translation, language, gender);
     }
     
     // Update progress if storage is available
@@ -404,12 +468,30 @@ export class Tooltip {
     return this.currentLanguage || 'spanish';
   }
   
-  private async fetchContextAsync(original: string, translation: string, language: LanguageCode): Promise<void> {
-    if (!this.currentTarget || !this.element) return;
+  private async fetchContextAsync(original: string, translation: string, language: LanguageCode, gender?: string | null): Promise<void> {
+    logger.info('[Tooltip] fetchContextAsync called:', { original, translation, language, gender });
+    
+    if (!this.currentTarget || !this.element) {
+      logger.warn('[Tooltip] No target or element, skipping context fetch');
+      return;
+    }
     
     try {
       // Get the sentence context
       const sentence = this.getWordContext(this.currentTarget);
+      
+      logger.info('[Tooltip] Sending GET_CONTEXT message:', {
+        word: original,
+        translation: translation,
+        language: language,
+        sentence: sentence?.substring(0, 50) + '...' // Log first 50 chars of sentence
+      });
+      
+      // Check if chrome.runtime is available
+      if (!chrome.runtime?.id) {
+        logger.error('[Tooltip] Chrome runtime not available or extension context invalidated');
+        throw new Error('Extension context invalidated');
+      }
       
       // Fetch context from background script
       const response = await chrome.runtime.sendMessage({
@@ -420,25 +502,81 @@ export class Tooltip {
         sentence: sentence
       });
       
-      if (response && response.context && this.isVisible && this.currentTarget) {
+      // Check for chrome runtime errors
+      if (chrome.runtime.lastError) {
+        logger.error('[Tooltip] Chrome runtime error:', chrome.runtime.lastError);
+        throw new Error(chrome.runtime.lastError.message);
+      }
+      
+      logger.info('[Tooltip] GET_CONTEXT response received:', response);
+      
+      // Check if response is wrapped in secure message format
+      const actualResponse = response?.data || response?.payload || response;
+      logger.info('[Tooltip] Actual response data:', actualResponse);
+      
+      // Log the exact structure to debug
+      logger.info('[Tooltip] Response structure debug:', {
+        hasResponse: !!response,
+        hasData: !!response?.data,
+        hasPayload: !!response?.payload,
+        responseKeys: response ? Object.keys(response) : [],
+        actualResponseKeys: actualResponse ? Object.keys(actualResponse) : [],
+        hasContext: !!actualResponse?.context,
+        contextKeys: actualResponse?.context ? Object.keys(actualResponse.context) : []
+      });
+      
+      if (actualResponse && actualResponse.context && this.isVisible && this.currentTarget) {
+        logger.info('[Tooltip] Context update check passed, updating content:', {
+          contextData: actualResponse.context,
+          isVisible: this.isVisible,
+          hasTarget: !!this.currentTarget
+        });
+        
         // Update content with fetched context
-        const currentOriginal = this.currentTarget.getAttribute('data-original');
-        const currentTranslation = this.currentTarget.getAttribute('data-translation');
+        const currentOriginal = this.currentTarget.getAttribute('data-original') || 
+                               this.currentTarget.getAttribute('data-fluent-original');
+        const currentTranslation = this.currentTarget.getAttribute('data-translation') || 
+                                  this.currentTarget.getAttribute('data-fluent-translation');
+        
+        logger.info('[Tooltip] Current target check:', {
+          currentOriginal,
+          currentTranslation,
+          expectedOriginal: original,
+          expectedTranslation: translation,
+          matches: currentOriginal === original && currentTranslation === translation
+        });
         
         // Only update if still showing the same word
         if (currentOriginal === original && currentTranslation === translation) {
+          logger.info('[Tooltip] Updating tooltip with context:', actualResponse.context);
           await this.updateContent(
             original,
             translation,
             language,
-            response.context.pronunciation || null,
-            response.context.meaning || null,
-            response.context.example || null
+            actualResponse.context.pronunciation || null,
+            actualResponse.context.englishExample || null,
+            actualResponse.context.translatedExample || null,
+            actualResponse.context.gender || null
           );
+          
+          // Recalculate position after content update since size may have changed
+          this.updatePosition();
+        } else {
+          logger.warn('[Tooltip] Word mismatch, not updating:', {
+            current: { original: currentOriginal, translation: currentTranslation },
+            expected: { original, translation }
+          });
         }
+      } else {
+        logger.warn('[Tooltip] Context update check failed:', {
+          hasResponse: !!actualResponse,
+          hasContext: !!actualResponse?.context,
+          isVisible: this.isVisible,
+          hasTarget: !!this.currentTarget
+        });
       }
     } catch (error) {
-      logger.error('Failed to fetch context:', error);
+      logger.error('[Tooltip] Failed to fetch context:', error);
       // Remove loading states on error
       if (this.element) {
         const loadingElements = this.element.querySelectorAll('.fluent-tooltip-loading');
@@ -525,24 +663,24 @@ export class Tooltip {
     
     // Check if there's enough space above (with 20px margin)
     if (spaceAbove >= tooltipHeight + 20) {
-      // Place above
-      top = targetRect.top + scrollTop - tooltipHeight - 8;
+      // Place above with more spacing to avoid covering the word
+      top = targetRect.top + scrollTop - tooltipHeight - 12;
       this.element.classList.remove('bottom');
       this.element.classList.add('top');
     } else if (spaceBelow >= tooltipHeight + 20) {
-      // Place below
-      top = targetRect.bottom + scrollTop + 8;
+      // Place below with more spacing
+      top = targetRect.bottom + scrollTop + 12;
       tooltipAbove = false;
       this.element.classList.remove('top');
       this.element.classList.add('bottom');
     } else {
       // Not enough space either way, choose the side with more space
       if (spaceAbove > spaceBelow) {
-        top = Math.max(scrollTop + 10, targetRect.top + scrollTop - tooltipHeight - 8);
+        top = Math.max(scrollTop + 10, targetRect.top + scrollTop - tooltipHeight - 12);
         this.element.classList.remove('bottom');
         this.element.classList.add('top');
       } else {
-        top = targetRect.bottom + scrollTop + 8;
+        top = targetRect.bottom + scrollTop + 12;
         tooltipAbove = false;
         this.element.classList.remove('top');
         this.element.classList.add('bottom');

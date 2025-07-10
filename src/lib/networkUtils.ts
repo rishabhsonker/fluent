@@ -46,8 +46,17 @@ export async function fetchWithRetry(
   const opts = { ...DEFAULT_RETRY_OPTIONS, ...retryOptions };
   let lastError: Error | null = null;
   
+  logger.info('[NetworkUtils] fetchWithRetry called', {
+    url,
+    method: options.method || 'GET',
+    hasHeaders: !!options.headers,
+    maxRetries: opts.maxRetries
+  });
+  
   for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
     try {
+      logger.info(`[NetworkUtils] Attempt ${attempt + 1}/${opts.maxRetries + 1}`, { url });
+      
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
@@ -59,8 +68,19 @@ export async function fetchWithRetry(
       
       clearTimeout(timeoutId);
       
+      logger.info(`[NetworkUtils] Response received`, {
+        url,
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+      
       // Check if response is retryable
       if (!response.ok && opts.retryableStatuses.includes(response.status) && attempt < opts.maxRetries) {
+        logger.warn(`[NetworkUtils] Retryable error, will retry`, {
+          status: response.status,
+          attempt: attempt + 1
+        });
         throw new NetworkError(
           `HTTP ${response.status}: ${response.statusText}`,
           response.status,
