@@ -18,6 +18,50 @@ const CACHE_TTL = {
   COST_TRACKING: 24 * 60 * 60, // 24 hours
 };
 
+// Helper functions for dynamic cache with rotation
+async function getRotatingContext(env, targetLanguage, word) {
+  if (!env.TRANSLATION_CACHE) return null;
+  
+  const cacheKey = `contexts:${targetLanguage}:${word.toLowerCase()}`;
+  const contextData = await env.TRANSLATION_CACHE.get(cacheKey, { type: 'json' });
+  
+  if (!contextData || !contextData.contexts || contextData.contexts.length === 0) {
+    return null;
+  }
+  
+  // Get the last used index and rotate
+  const lastIndex = contextData.lastUsedIndex || 0;
+  const nextIndex = (lastIndex + 1) % contextData.contexts.length;
+  const selectedContext = contextData.contexts[lastIndex];
+  
+  // Update the last used index
+  contextData.lastUsedIndex = nextIndex;
+  await env.TRANSLATION_CACHE.put(cacheKey, JSON.stringify(contextData), {
+    expirationTtl: CACHE_TTL.TRANSLATION
+  });
+  
+  return {
+    translation: contextData.translation,
+    ...selectedContext
+  };
+}
+
+async function storeContextVariations(env, targetLanguage, word, translation, contexts) {
+  if (!env.TRANSLATION_CACHE || !contexts || contexts.length === 0) return;
+  
+  const cacheKey = `contexts:${targetLanguage}:${word.toLowerCase()}`;
+  const contextData = {
+    translation: translation,
+    contexts: contexts,
+    lastUsedIndex: 0,
+    createdAt: Date.now()
+  };
+  
+  await env.TRANSLATION_CACHE.put(cacheKey, JSON.stringify(contextData), {
+    expirationTtl: CACHE_TTL.TRANSLATION
+  });
+}
+
 // Structured logging helpers
 function logInfo(message, context = {}) {
   console.log(JSON.stringify({
@@ -327,10 +371,22 @@ async function handleTranslateWithContext(request, env, ctx) {
     // Check cache for translations
     const translations = {};
     const wordsToTranslate = [];
-    const cacheStats = { hits: 0, misses: 0 };
+    const cacheStats = { hits: 0, misses: 0, preloadedHits: 0 };
 
     for (const word of validWords) {
-      const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
+      const wordLower = word.toLowerCase().trim();
+      
+      // First check rotating context cache
+      const rotatingContext = await getRotatingContext(env, targetLanguage, wordLower);
+      if (rotatingContext) {
+        translations[word] = rotatingContext;
+        cacheStats.preloadedHits++;
+        cacheStats.hits++;
+        continue;
+      }
+      
+      // Then check KV cache
+      const cacheKey = `trans:${targetLanguage}:${wordLower}`;
       const cached = env.TRANSLATION_CACHE ? await env.TRANSLATION_CACHE.get(cacheKey) : null;
       
       if (cached) {
@@ -439,57 +495,116 @@ async function handleTranslateWithContext(request, env, ctx) {
         azureRegion: env.AZURE_REGION || 'not-set'
       });
 
-      // Call Microsoft Translator API
-      const apiTranslations = await callTranslatorAPI(
+      // Start both translation and context generation in parallel
+      const translationPromise = callTranslatorAPI(
         wordsToTranslate,
         targetLanguage,
         translationApiKey,
         env
       );
-
-      // Get context for translations if enabled
-      let contextData = {};
-      if (enableContext && env.CLAUDE_API_KEY && wordsToTranslate.length > 0) {
-        // Prepare all translations for context generation
-        const allTranslations = {};
+      
+      // Generate basic context immediately
+      const basicContext = generateBasicContext(wordsToTranslate, translations, targetLanguage);
+      
+      // Also store basic context variations for future use
+      ctx.waitUntil((async () => {
         for (const word of wordsToTranslate) {
-          allTranslations[word] = apiTranslations[word] || translations[word];
+          const translation = apiTranslations[word] || translations[word] || word;
+          const variations = generateBasicContextVariations(word, translation, targetLanguage, 3);
+          await storeContextVariations(env, targetLanguage, word, translation, variations);
+        }
+      })());
+      
+      // Start enhanced context generation if enabled
+      let enhancedContextPromise = null;
+      if (enableContext && env.CLAUDE_API_KEY && wordsToTranslate.length > 0) {
+        // Use a placeholder translations object for context generation
+        const placeholderTranslations = {};
+        for (const word of wordsToTranslate) {
+          placeholderTranslations[word] = translations[word] || word;
         }
         
-        contextData = await getContextForWords(
+        enhancedContextPromise = getContextForWords(
           wordsToTranslate,
-          allTranslations,
+          placeholderTranslations,
           targetLanguage,
           env,
           ctx,
           installationId
         );
       }
-
+      
+      // Wait for translations
+      const apiTranslations = await translationPromise;
+      
+      // Don't wait for enhanced context - let it complete in background
+      let enhancedContext = {};
+      if (enhancedContextPromise) {
+        // Use Promise.race with a timeout to avoid waiting too long
+        enhancedContext = await Promise.race([
+          enhancedContextPromise,
+          new Promise(resolve => setTimeout(() => resolve({}), 1000)) // 1 second timeout
+        ]) || {};
+        
+        // Continue fetching enhanced context in background
+        if (Object.keys(enhancedContext).length === 0) {
+          ctx.waitUntil(
+            enhancedContextPromise.then(async (fullContext) => {
+              // Cache the enhanced context for future requests
+              const cachePromises = [];
+              for (const word of Object.keys(fullContext)) {
+                const translation = apiTranslations[word] || translations[word];
+                if (translation && fullContext[word]) {
+                  const combined = {
+                    translation: typeof translation === 'string' ? translation : translation.translation || translation,
+                    pronunciation: fullContext[word].pronunciation,
+                    meaning: fullContext[word].meaning,
+                    example: fullContext[word].example
+                  };
+                  
+                  const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
+                  cachePromises.push(
+                    env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
+                      cacheKey,
+                      JSON.stringify(combined),
+                      { expirationTtl: CACHE_TTL.TRANSLATION }
+                    )
+                  );
+                }
+              }
+              await Promise.all(cachePromises);
+            })
+          );
+        }
+      }
+      
       // Update translations with context and cache them
       const cachePromises = [];
       for (const word of wordsToTranslate) {
         const translation = apiTranslations[word] || translations[word];
-        const context = contextData[word];
+        const context = enhancedContext[word] || basicContext[word];
         
         if (translation) {
-          const combined = context ? {
+          const combined = {
             translation: typeof translation === 'string' ? translation : translation.translation || translation,
-            pronunciation: context.pronunciation,
-            meaning: context.meaning,
-            example: context.example
-          } : translation;
+            pronunciation: context?.pronunciation || basicContext[word]?.pronunciation,
+            meaning: context?.meaning || basicContext[word]?.meaning,
+            example: context?.example || basicContext[word]?.example
+          };
           
           translations[word] = combined;
           
-          const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
-          cachePromises.push(
-            env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
-              cacheKey, 
-              JSON.stringify(combined), 
-              { expirationTtl: CACHE_TTL.TRANSLATION }
-            )
-          );
+          // Only cache if we have enhanced context
+          if (enhancedContext[word]) {
+            const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
+            cachePromises.push(
+              env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
+                cacheKey, 
+                JSON.stringify(combined), 
+                { expirationTtl: CACHE_TTL.TRANSLATION }
+              )
+            );
+          }
         }
       }
 
@@ -521,6 +636,7 @@ async function handleTranslateWithContext(request, env, ctx) {
       metadata: {
         cacheHits: cacheStats.hits,
         cacheMisses: cacheStats.misses,
+        preloadedHits: cacheStats.preloadedHits,
         wordsProcessed: validWords.length,
         newTranslations: wordsToTranslate.length,
         limits: rateLimitStatus
@@ -533,6 +649,7 @@ async function handleTranslateWithContext(request, env, ctx) {
         'X-RateLimit-Remaining-Daily': (rateLimitStatus.dailyRemaining || 1000).toString(),
         'X-Processing-Time-Ms': processingTime.toString(),
         'X-Cache-Hit-Rate': (cacheStats.hits / (cacheStats.hits + cacheStats.misses) * 100).toFixed(1),
+        'X-Preloaded-Hit-Rate': (cacheStats.preloadedHits / validWords.length * 100).toFixed(1),
       },
     });
 
@@ -606,6 +723,125 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
 }
 
 /**
+ * Generate multiple basic context variations without API call
+ */
+function generateBasicContextVariations(word, translation, targetLanguage, count = 3) {
+  const variations = [];
+  
+  const pronunciationGuides = {
+    es: {
+      // Spanish pronunciation patterns
+      'a': 'ah', 'e': 'eh', 'i': 'ee', 'o': 'oh', 'u': 'oo',
+      'ñ': 'ny', 'll': 'y', 'rr': 'rr', 'j': 'h', 'g': 'g/h',
+      'que': 'keh', 'qui': 'kee', 'gue': 'geh', 'gui': 'gee'
+    },
+    fr: {
+      // French pronunciation patterns
+      'ou': 'oo', 'eu': 'uh', 'oi': 'wah', 'ai': 'eh', 'au': 'oh',
+      'ch': 'sh', 'r': 'r', 'u': 'ew', 'é': 'ay', 'è': 'eh'
+    },
+    de: {
+      // German pronunciation patterns
+      'ei': 'eye', 'ie': 'ee', 'eu': 'oy', 'äu': 'oy', 'ö': 'er',
+      'ü': 'ew', 'ä': 'eh', 'sch': 'sh', 'ch': 'kh', 'w': 'v'
+    }
+  };
+  
+  const exampleSets = {
+    es: [
+      // Set 1 - Present tense
+      ['Me gusta {word}.', 'Veo {word}.', 'Busco {word}.', 'Encuentro {word}.', 'Uso {word}.'],
+      // Set 2 - Need/want
+      ['Necesito {word}.', 'Quiero {word}.', 'Prefiero {word}.', 'Deseo {word}.', 'Compro {word}.'],
+      // Set 3 - Descriptive
+      ['Es {word}.', 'Hay {word}.', 'Tengo {word}.', 'Existe {word}.', 'Conozco {word}.']
+    ],
+    fr: [
+      // Set 1 - Present tense
+      ["J'aime {word}.", "Je vois {word}.", "Je cherche {word}.", "Je trouve {word}.", "J'utilise {word}."],
+      // Set 2 - Need/want
+      ["J'ai besoin de {word}.", "Je veux {word}.", "Je préfère {word}.", "Je souhaite {word}.", "J'achète {word}."],
+      // Set 3 - Descriptive
+      ["C'est {word}.", "Il y a {word}.", "J'ai {word}.", "Voici {word}.", "Je connais {word}."]
+    ],
+    de: [
+      // Set 1 - Present tense
+      ['Ich mag {word}.', 'Ich sehe {word}.', 'Ich suche {word}.', 'Ich finde {word}.', 'Ich benutze {word}.'],
+      // Set 2 - Need/want
+      ['Ich brauche {word}.', 'Ich will {word}.', 'Ich möchte {word}.', 'Ich wünsche {word}.', 'Ich kaufe {word}.'],
+      // Set 3 - Descriptive
+      ['Das ist {word}.', 'Es gibt {word}.', 'Ich habe {word}.', 'Hier ist {word}.', 'Ich kenne {word}.']
+    ]
+  };
+  
+  const meanings = {
+    es: [
+      `The Spanish word for "${word}"`,
+      `"${word}" in Spanish`,
+      `Spanish translation of "${word}"`
+    ],
+    fr: [
+      `The French word for "${word}"`,
+      `"${word}" in French`,
+      `French translation of "${word}"`
+    ],
+    de: [
+      `The German word for "${word}"`,
+      `"${word}" in German`,
+      `German translation of "${word}"`
+    ]
+  };
+  
+  // Generate basic pronunciation
+  let pronunciation = translation;
+  const patterns = pronunciationGuides[targetLanguage] || {};
+  for (const [pattern, replacement] of Object.entries(patterns)) {
+    pronunciation = pronunciation.replace(new RegExp(pattern, 'gi'), replacement);
+  }
+  
+  // Add stress marks for readability
+  if (pronunciation.length > 2) {
+    const syllables = pronunciation.match(/.{1,3}/g) || [];
+    pronunciation = syllables.join('-').toUpperCase();
+  }
+  
+  // Generate variations
+  const sets = exampleSets[targetLanguage] || exampleSets.es;
+  const meaningOptions = meanings[targetLanguage] || meanings.es;
+  
+  for (let i = 0; i < count; i++) {
+    const setIndex = i % sets.length;
+    const exampleSet = sets[setIndex];
+    const randomExample = exampleSet[Math.floor(Math.random() * exampleSet.length)];
+    const example = randomExample.replace('{word}', translation);
+    const meaning = meaningOptions[i % meaningOptions.length];
+    
+    variations.push({
+      pronunciation: pronunciation,
+      meaning: meaning,
+      example: example
+    });
+  }
+  
+  return variations;
+}
+
+/**
+ * Generate basic context for multiple words (backwards compatibility)
+ */
+function generateBasicContext(words, translations, targetLanguage) {
+  const contexts = {};
+  
+  for (const word of words) {
+    const translation = translations[word] || word;
+    const variations = generateBasicContextVariations(word, translation, targetLanguage, 1);
+    contexts[word] = variations[0];
+  }
+  
+  return contexts;
+}
+
+/**
  * Get context for words using Claude API
  */
 async function getContextForWords(words, translations, targetLanguage, env, ctx, installationId = 'anonymous') {
@@ -618,6 +854,13 @@ async function getContextForWords(words, translations, targetLanguage, env, ctx,
     installationId
   });
   
+  // Skip if no Claude key
+  if (!env.CLAUDE_API_KEY) {
+    logInfo('No Claude API key, returning basic context');
+    // Return basic context without API call
+    return generateBasicContext(words, translations, targetLanguage);
+  }
+  
   // Check AI rate limits
   if (env.AI_RATE_LIMITER) {
     const hourlyLimit = await env.AI_RATE_LIMITER.limit({
@@ -629,34 +872,47 @@ async function getContextForWords(words, translations, targetLanguage, env, ctx,
     });
     
     if (!hourlyLimit.success || !dailyLimit.success) {
-      logInfo('AI rate limit exceeded', {
+      logInfo('AI rate limit exceeded, using basic context', {
         installationId,
         hourlyRemaining: hourlyLimit.remaining || 0,
         dailyRemaining: dailyLimit.remaining || 0
       });
-      return contexts; // Return empty contexts if rate limited
+      // Return basic context instead of empty
+      return generateBasicContext(words, translations, targetLanguage);
     }
   }
   
-  // Create batch prompt for Claude
+  // Create batch prompt for Claude to generate multiple variations
   const wordsToAnalyze = words.map(word => `"${word}" → "${translations[word] || word}"`).join('\n');
-  const prompt = `You are helping English speakers learn ${targetLanguage}. For each English word and its ${targetLanguage} translation below, provide:
+  const prompt = `You are helping English speakers learn ${targetLanguage}. For each English word and its ${targetLanguage} translation below, provide 3 DIFFERENT variations of:
 1. Easy-to-read pronunciation of the ${targetLanguage} word (like "doo-rah-DEH-roh" for Spanish "duradero")
-2. A simple, clear definition in English (one sentence)
-3. A practical example sentence IN ${targetLanguage.toUpperCase()} using the translated word
+2. A simple, clear definition in English (vary the phrasing for each variation)
+3. A practical example sentence IN ${targetLanguage.toUpperCase()} using the translated word (different contexts)
 
-Format your response as a JSON object with the English word as key and an object containing pronunciation (of the ${targetLanguage} word), meaning (in English), and example (in ${targetLanguage}).
+Format your response as a JSON object with the English word as key and an array of 3 variation objects, each containing pronunciation, meaning, and example.
 
 Words to analyze:
 ${wordsToAnalyze}
 
 Example format:
 {
-  "durable": {
-    "pronunciation": "doo-rah-DEH-roh",
-    "meaning": "Able to withstand wear, pressure, or damage",
-    "example": "Esta mochila es muy duradera y debería durar muchos años."
-  }
+  "durable": [
+    {
+      "pronunciation": "doo-rah-DEH-roh",
+      "meaning": "Able to withstand wear, pressure, or damage",
+      "example": "Esta mochila es muy duradera y debería durar muchos años."
+    },
+    {
+      "pronunciation": "doo-rah-DEH-roh",
+      "meaning": "Long-lasting and resistant to breaking",
+      "example": "Necesito zapatos duraderos para caminar mucho."
+    },
+    {
+      "pronunciation": "doo-rah-DEH-roh",
+      "meaning": "Something that remains in good condition over time",
+      "example": "El material duradero protege contra la lluvia."
+    }
+  ]
 }
 
 Respond with valid JSON only, no markdown or additional text.`;
@@ -697,7 +953,21 @@ Respond with valid JSON only, no markdown or additional text.`;
     try {
       const content = claudeData.content[0].text;
       const contextData = JSON.parse(content);
-      Object.assign(contexts, contextData);
+      
+      // Process the variations for each word
+      for (const [word, variations] of Object.entries(contextData)) {
+        if (Array.isArray(variations) && variations.length > 0) {
+          // Store all variations in KV for future rotation
+          await storeContextVariations(env, targetLanguage, word, translations[word], variations);
+          
+          // Return the first variation for immediate use
+          contexts[word] = variations[0];
+        } else {
+          // Fallback for single context format
+          contexts[word] = variations;
+        }
+      }
+      
       logInfo('Successfully parsed context data', {
         contextCount: Object.keys(contextData).length
       });

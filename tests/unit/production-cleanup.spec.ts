@@ -67,8 +67,8 @@ test.describe('Production Cleanup Verification', () => {
     expect(content).not.toContain('debug-installation');
     expect(content).not.toContain('debug-signature');
     
-    // Should not have TODO about auth
-    expect(content).not.toContain('TODO: Fix installation-based auth');
+    // Should have enableContext set to true for proactive fetching
+    expect(content).toContain('enableContext: true');
   });
   
   test('should have production-ready bundle sizes', async () => {
