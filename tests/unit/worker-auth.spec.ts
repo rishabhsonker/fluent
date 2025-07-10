@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
+import crypto from 'crypto';
 
 test.describe('Worker Authentication', () => {
   test('should generate unique installation tokens', () => {
     // Test token generation
-    const mockToken = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+    const randomBytes = crypto.randomBytes(32);
+    const mockToken = randomBytes.toString('base64')
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=/g, '');

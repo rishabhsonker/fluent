@@ -43,17 +43,8 @@ export default defineConfig({
       testMatch: '**/e2e/**/*.spec.ts',
       use: { 
         ...devices['Desktop Chrome'],
-        // Load extension for testing
-        launchOptions: {
-          args: [
-            `--disable-extensions-except=${path.join(__dirname, 'dist')}`,
-            `--load-extension=${path.join(__dirname, 'dist')}`,
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-          ],
-          headless: false, // Extensions don't work in headless mode
-        },
+        // E2E tests will handle their own browser context with extension
+        headless: false, // Extensions don't work in headless mode
       },
     },
   ],
