@@ -1,9 +1,10 @@
 # Security Features
 
 ## Authentication
-- **HMAC-SHA256**: All API requests are signed with shared secret
-- **Extension ID Verification**: Only whitelisted extension IDs can access the API
+- **Installation-Based Tokens**: Each device gets a unique authentication token
+- **HMAC-SHA256**: All API requests are signed for integrity verification
 - **Timestamp Validation**: 5-minute window prevents replay attacks
+- **Per-Device Rate Limiting**: Isolated quotas for each installation
 
 ## Data Protection
 - **AES-256-GCM Encryption**: API keys are encrypted before storage
@@ -25,8 +26,12 @@
 
 ## Rate Limiting
 - **Server-Side Enforcement**: Rate limits enforced at Cloudflare Worker level
-- **Per-Installation Limits**: 100 requests/hour, 1000 requests/day for translations
+- **Per-Installation Limits**: 
+  - Translations: 100/hour, 1000/day
+  - Context hovering: 50/minute
+  - AI explanations: 100/hour, 500/day
 - **Cost Protection**: Daily limit of $10 USD to prevent abuse
+- **Dynamic Caching**: Cloudflare KV reduces API calls over time
 
 ## Anti-Detection
 - **Random Delays**: 300-800ms processing variation
@@ -40,14 +45,17 @@ To report security vulnerabilities:
 - Include steps to reproduce and potential impact
 - Expected response within 48 hours
 
-## Known Limitations
+## Security Updates
 
-### Current Implementation
-- Shared secret is hardcoded in extension (planned fix in v1.0.1)
-- Content scripts run on all websites (moving to dynamic permissions in v1.1)
+### Recent Improvements (v1.1.3)
+✅ Implemented installation-based authentication tokens
+✅ Removed hardcoded shared secrets
+✅ Added per-device rate limiting
+✅ Enhanced API performance with parallel calls
+✅ Automatic blacklisting of productivity sites
 
-### Planned Improvements (v1.0.1)
-- Dynamic installation tokens instead of shared secret
-- Per-installation API keys with revocation capability
-- Enhanced CORS validation for specific extension IDs
-- Request signing with unique tokens
+### Future Enhancements
+- OAuth 2.0 support for premium users
+- WebAuthn for enhanced security
+- Certificate pinning for API calls
+- Anomaly detection for usage patterns
