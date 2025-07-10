@@ -1072,6 +1072,16 @@ async function getSiteConfig(env) {
       // Work tools
       'slack.com', 'discord.com', 'teams.microsoft.com', 'zoom.us',
       
+      // Google productivity suite
+      'docs.google.com', 'sheets.google.com', 'slides.google.com', 'drive.google.com',
+      
+      // Microsoft productivity suite
+      'office.com', 'office365.com', 'word.office.com', 'excel.office.com', 
+      'powerpoint.office.com', 'onedrive.com', 'sharepoint.com',
+      
+      // Other productivity tools
+      'notion.so', 'evernote.com', 'dropbox.com', 'box.com',
+      
       // Social media
       'facebook.com', 'instagram.com', 'twitter.com', 'linkedin.com'
     ],
