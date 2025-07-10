@@ -58,13 +58,14 @@ test.describe('Production Cleanup Verification', () => {
     expect(content).not.toContain('[Service Worker Debug]');
   });
   
-  test('should use shared secret authentication', () => {
+  test('should use installation-based authentication', () => {
     const translatorPath = join(__dirname, '../../src/lib/simpleTranslator.ts');
     const content = readFileSync(translatorPath, 'utf-8');
     
-    // Should have shared secret auth headers
-    expect(content).toContain('fluent-extension-2024-shared-secret-key');
-    expect(content).toContain('debug-installation');
+    // Should use InstallationAuth instead of hardcoded debug auth
+    expect(content).toContain('InstallationAuth.getAuthHeaders()');
+    expect(content).not.toContain('debug-installation');
+    expect(content).not.toContain('debug-signature');
     
     // Should not have TODO about auth
     expect(content).not.toContain('TODO: Fix installation-based auth');

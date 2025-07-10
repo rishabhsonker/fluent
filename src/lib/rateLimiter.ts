@@ -93,11 +93,11 @@ export class RateLimiter {
         perHour: 500,
         perDay: 2000
       },
-      // Context explanations
+      // Context explanations (same as translations since they're now fetched together)
       context: {
-        perMinute: 3,
-        perHour: 30,
-        perDay: 100
+        perMinute: 50,
+        perHour: 500,
+        perDay: 2000
       }
     };
     

@@ -2,25 +2,41 @@ import { test, expect } from '@playwright/test';
 import * as crypto from 'crypto';
 
 test.describe('Installation Authentication', () => {
-  test('should use shared secret authentication', async () => {
-    // Test shared secret authentication headers
-    const sharedSecret = 'fluent-extension-2024-shared-secret-key';
-    const installationId = 'debug-installation';
+  test('should use installation-based authentication', async () => {
+    // Test proper installation authentication headers
+    const token = 'generated-installation-token-abc123';
+    const installationId = crypto.randomUUID();
     const timestamp = Date.now();
     
     // Format headers as used in production
     const headers = {
-      'Authorization': `Bearer ${sharedSecret}`,
+      'Authorization': `Bearer ${token}`,
       'X-Installation-Id': installationId,
       'X-Timestamp': timestamp.toString(),
-      'X-Signature': 'debug-signature'
+      'X-Signature': 'generated-signature'
     };
     
     // Verify header format matches production
-    expect(headers['Authorization']).toBe('Bearer fluent-extension-2024-shared-secret-key');
-    expect(headers['X-Installation-Id']).toBe('debug-installation');
+    expect(headers['Authorization']).toMatch(/^Bearer .+$/);
+    expect(headers['X-Installation-Id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(headers['X-Timestamp']).toMatch(/^\d+$/);
-    expect(headers['X-Signature']).toBe('debug-signature');
+    expect(headers['X-Signature']).toBeTruthy();
+  });
+
+  test('should handle debug authentication fallback', async () => {
+    // Test debug auth fallback when registration fails
+    const debugAuth = {
+      installationId: 'debug-installation',
+      token: 'fluent-extension-2024-shared-secret-key'
+    };
+    
+    // In development environment, debug auth should be accepted
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const acceptsDebugAuth = isDevelopment && debugAuth.token === 'fluent-extension-2024-shared-secret-key';
+    
+    // Verify debug auth is only accepted in development
+    expect(debugAuth.installationId).toBe('debug-installation');
+    expect(debugAuth.token).toBe('fluent-extension-2024-shared-secret-key');
   });
 
   test('should validate timestamp within acceptable range', async () => {

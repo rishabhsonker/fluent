@@ -43,10 +43,12 @@ export class PageControl {
     // Create main button
     this.element = document.createElement('div');
     this.element.className = 'fluent-control';
+    this.element.setAttribute('data-fluent-skip', 'true');
     // Create button safely
     const button = document.createElement('button');
     button.className = 'fluent-control-button fluent-control-button-small';
     button.setAttribute('aria-label', 'Fluent language settings');
+    button.setAttribute('data-fluent-skip', 'true');
     
     // Use extension icon instead of flag
     const iconImg = document.createElement('img');
@@ -70,6 +72,7 @@ export class PageControl {
     // Create menu
     this.menuElement = document.createElement('div');
     this.menuElement.className = 'fluent-control-menu';
+    this.menuElement.setAttribute('data-fluent-skip', 'true');
     this.menuElement.innerHTML = this.renderMenu();
     this.element.appendChild(this.menuElement);
 
@@ -100,18 +103,18 @@ export class PageControl {
 
   private renderMenu(): string {
     return `
-      <div class="fluent-control-menu-section">
+      <div class="fluent-control-menu-section" data-fluent-skip="true">
         <div class="fluent-control-menu-label">Language</div>
         <div class="fluent-control-language-buttons">
-          <button class="fluent-control-lang-btn" data-lang="spanish">
+          <button class="fluent-control-lang-btn" data-lang="spanish" data-fluent-skip="true">
             <span>🇪🇸</span>
             <span>Spanish</span>
           </button>
-          <button class="fluent-control-lang-btn" data-lang="french">
+          <button class="fluent-control-lang-btn" data-lang="french" data-fluent-skip="true">
             <span>🇫🇷</span>
             <span>French</span>
           </button>
-          <button class="fluent-control-lang-btn" data-lang="german">
+          <button class="fluent-control-lang-btn" data-lang="german" data-fluent-skip="true">
             <span>🇩🇪</span>
             <span>German</span>
           </button>
@@ -120,7 +123,7 @@ export class PageControl {
       
       <div class="fluent-control-menu-divider"></div>
       
-      <div class="fluent-control-menu-section">
+      <div class="fluent-control-menu-section" data-fluent-skip="true">
         <div class="fluent-control-menu-item" data-action="pause-everywhere">
           <span>⏸️</span>
           <span>Pause everywhere (6 hours)</span>

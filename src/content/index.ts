@@ -221,6 +221,18 @@ interface SiteConfig {
     const skipSelectors = siteConfig.skipSelectors || [];
     if (!element || !element.parentElement) return true;
     
+    // Always skip Fluent extension UI elements
+    if (element instanceof Element) {
+      if (element.closest('.fluent-control') || 
+          element.closest('.fluent-tooltip') ||
+          element.closest('[data-fluent-skip]') ||
+          element.classList.contains('fluent-control') ||
+          element.classList.contains('fluent-tooltip') ||
+          element.hasAttribute('data-fluent-skip')) {
+        return true;
+      }
+    }
+    
     // Check if element or any parent matches skip selectors
     for (const selector of skipSelectors) {
       if (element instanceof Element && element.matches(selector)) return true;
@@ -272,7 +284,18 @@ interface SiteConfig {
     // Collect text nodes using optimized processor
     const textNodes = textProcessorInstance.collectTextNodes(document.body, {
       ...config,
-      skipSelectors: [...(config.skipSelectors || []), 'script', 'style', 'noscript'],
+      skipSelectors: [
+        ...(config.skipSelectors || []), 
+        'script', 
+        'style', 
+        'noscript',
+        '.fluent-control',      // Skip page control widget
+        '.fluent-control *',    // Skip all children of page control
+        '.fluent-tooltip',      // Skip tooltip
+        '.fluent-tooltip *',    // Skip all children of tooltip
+        '[data-fluent-skip]',   // Skip elements marked to skip
+        '[data-fluent-skip] *'  // Skip all children of marked elements
+      ],
       shouldSkipElement: async (el: Element) => await shouldSkipElement(el, config)
     });
 

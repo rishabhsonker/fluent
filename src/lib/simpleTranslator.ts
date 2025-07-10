@@ -218,13 +218,8 @@ export class SimpleTranslator {
     return await rateLimiter.withRateLimit('translation', identifier, async () => {
       // No mock mode in production
       
-      // Use shared secret authentication
-      const authHeaders = {
-        'Authorization': 'Bearer fluent-extension-2024-shared-secret-key',
-        'X-Installation-Id': 'debug-installation',
-        'X-Timestamp': Date.now().toString(),
-        'X-Signature': 'debug-signature'
-      };
+      // Use proper installation-based authentication
+      const authHeaders = await (await import('./installationAuth')).InstallationAuth.getAuthHeaders();
       
       // Convert language name to code (e.g., 'spanish' -> 'es')
       const langCode = SUPPORTED_LANGUAGES[targetLanguage as keyof typeof SUPPORTED_LANGUAGES]?.code || targetLanguage;
@@ -246,7 +241,7 @@ export class SimpleTranslator {
             words, 
             targetLanguage: langCode, 
             apiKey,
-            enableContext: false // Get translations only, fetch context on-demand
+            enableContext: true // Get context with translations proactively
           })
         },
         {
@@ -381,13 +376,8 @@ export class SimpleTranslator {
       await costGuard.checkCost('context', 100); // Estimate 100 chars for context
       
       try {
-        // Use shared secret authentication
-        const authHeaders = {
-          'Authorization': 'Bearer fluent-extension-2024-shared-secret-key',
-          'X-Installation-Id': 'debug-installation',
-          'X-Timestamp': Date.now().toString(),
-          'X-Signature': 'debug-signature'
-        };
+        // Use proper installation-based authentication
+        const authHeaders = await (await import('./installationAuth')).InstallationAuth.getAuthHeaders();
         
         const langCode = SUPPORTED_LANGUAGES[targetLanguage as keyof typeof SUPPORTED_LANGUAGES]?.code || targetLanguage;
         

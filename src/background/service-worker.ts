@@ -76,8 +76,6 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
     });
     
     // Initialize installation authentication
-    // TEMPORARY: Skip installation auth while using debug auth
-    /*
     try {
       logger.info('[Service Worker] Starting installation auth initialization...');
       await InstallationAuth.initialize();
@@ -86,7 +84,6 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
       logger.error('[Service Worker] Failed to initialize installation authentication:', error);
       // Continue without authentication - user can still use their own API key
     }
-    */
   }
   
   // Migrate API keys from old storage on update
@@ -94,8 +91,6 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
     await secureCrypto.migrateFromOldStorage();
     
     // Initialize installation auth if not already done
-    // TEMPORARY: Skip installation auth while using debug auth
-    /*
     try {
       const installationData = await InstallationAuth.getInstallationData();
       if (!installationData) {
@@ -105,7 +100,6 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
       logger.error('Failed to initialize authentication on update:', error);
       // Continue without authentication
     }
-    */
   }
   
   // Load settings

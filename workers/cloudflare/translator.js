@@ -221,9 +221,9 @@ async function verifyAuthentication(request, env) {
   // Extract token from Bearer header
   const token = authHeader.substring(7);
   
-  // TEMPORARY: Accept debug token for testing
-  if (token === 'fluent-extension-2024-shared-secret-key' && installationId === 'debug-installation') {
-    logInfo('Debug authentication accepted');
+  // Only accept debug token in development environment
+  if (env.ENVIRONMENT === 'development' && token === 'fluent-extension-2024-shared-secret-key' && installationId === 'debug-installation') {
+    logInfo('Debug authentication accepted in development');
     return null; // Success
   }
   
@@ -461,7 +461,8 @@ async function handleTranslateWithContext(request, env, ctx) {
           allTranslations,
           targetLanguage,
           env,
-          ctx
+          ctx,
+          installationId
         );
       }
 
@@ -607,14 +608,35 @@ async function callTranslatorAPI(words, targetLanguage, apiKey, env) {
 /**
  * Get context for words using Claude API
  */
-async function getContextForWords(words, translations, targetLanguage, env, ctx) {
+async function getContextForWords(words, translations, targetLanguage, env, ctx, installationId = 'anonymous') {
   const contexts = {};
   
   logInfo('Getting context for words', {
     wordCount: words.length,
     words: words,
-    hasClaudeKey: !!env.CLAUDE_API_KEY
+    hasClaudeKey: !!env.CLAUDE_API_KEY,
+    installationId
   });
+  
+  // Check AI rate limits
+  if (env.AI_RATE_LIMITER) {
+    const hourlyLimit = await env.AI_RATE_LIMITER.limit({
+      key: `${installationId}:context`
+    });
+    
+    const dailyLimit = await env.DAILY_AI_LIMITER.limit({
+      key: `${installationId}:context`
+    });
+    
+    if (!hourlyLimit.success || !dailyLimit.success) {
+      logInfo('AI rate limit exceeded', {
+        installationId,
+        hourlyRemaining: hourlyLimit.remaining || 0,
+        dailyRemaining: dailyLimit.remaining || 0
+      });
+      return contexts; // Return empty contexts if rate limited
+    }
+  }
   
   // Create batch prompt for Claude
   const wordsToAnalyze = words.map(word => `"${word}" → "${translations[word] || word}"`).join('\n');
@@ -874,7 +896,8 @@ async function handleInstallationRegistration(request, env, ctx) {
     });
     
     return new Response(JSON.stringify({
-      apiToken,
+      token: apiToken,      // Extension expects 'token' field
+      apiToken,             // Also include as apiToken for compatibility
       refreshToken,
       expiresIn: 7 * 24 * 60 * 60 // 7 days
     }), {
