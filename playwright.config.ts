@@ -54,8 +54,10 @@ export default defineConfig({
       testMatch: '**/e2e/**/*.spec.ts',
       use: { 
         ...devices['Desktop Chrome'],
-        // E2E tests will handle their own browser context with extension
-        headless: false, // Extensions don't work in headless mode
+        // Use chromium channel for better extension support
+        channel: 'chromium',
+        // Extensions need headed mode with --load-extension approach
+        headless: false,
       },
     },
   ],
