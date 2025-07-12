@@ -54,16 +54,16 @@ Manage blocked and optimized sites:
 
 ```bash
 # Block a site
-node manage-sites.js block example.com
+node sites.js block example.com
 
 # Add optimized configuration
-node manage-sites.js optimize medium.com "article p" 10
+node sites.js optimize medium.com "article p" 10
 
 # Upload to KV
-node manage-sites.js upload
+node sites.js upload
 
 # List current configuration
-node manage-sites.js list
+node sites.js list
 ```
 
 ## Endpoints
