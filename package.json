@@ -33,7 +33,6 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.2.1",
     "jsdom": "^26.1.0",
-    "license-checker": "^25.0.1",
     "playwright": "^1.53.2",
     "terser": "^5.43.1",
     "typescript": "^5.8.3",
