@@ -124,6 +124,9 @@ jobs:
         name: extension-package
     
     - name: Deploy Cloudflare Worker (Development)
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       run: |
         echo "Deploying worker to development..."
         # cd workers/cloudflare
@@ -175,6 +178,9 @@ jobs:
         asset_content_type: application/zip
     
     - name: Deploy Cloudflare Worker (Production)
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       run: |
         echo "Deploying worker to production..."
         # cd workers/cloudflare
@@ -182,6 +188,10 @@ jobs:
         # npx wrangler deploy --env production
     
     - name: Deploy to Chrome Web Store
+      env:
+        CHROME_WEBSTORE_CLIENT_ID: ${{ secrets.CHROME_WEBSTORE_CLIENT_ID }}
+        CHROME_WEBSTORE_CLIENT_SECRET: ${{ secrets.CHROME_WEBSTORE_CLIENT_SECRET }}
+        CHROME_WEBSTORE_REFRESH_TOKEN: ${{ secrets.CHROME_WEBSTORE_REFRESH_TOKEN }}
       run: |
         echo "Deploying to Chrome Web Store..."
         # Add actual Chrome Web Store deployment here

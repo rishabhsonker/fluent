@@ -99,28 +99,33 @@ Every PR runs:
 
 ## Secret Management
 
-### Required GitHub Secrets
+### Environment Secrets (Recommended)
 
+Environment secrets provide better security isolation - each environment only has access to its own secrets.
+
+#### Development Environment Secrets
+Go to Settings → Environments → `development` → Add secret:
 ```yaml
-# Cloudflare (Development)
-DEV_CLOUDFLARE_API_TOKEN
-DEV_CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_API_TOKEN    # Your dev Cloudflare API token
+CLOUDFLARE_ACCOUNT_ID   # Your dev Cloudflare account ID
+```
 
-# Cloudflare (Production)
-PROD_CLOUDFLARE_API_TOKEN
-PROD_CLOUDFLARE_ACCOUNT_ID
-
-# Chrome Web Store
-CHROME_WEBSTORE_CLIENT_ID
+#### Production Environment Secrets
+Go to Settings → Environments → `production` → Add secret:
+```yaml
+CLOUDFLARE_API_TOKEN         # Your prod Cloudflare API token
+CLOUDFLARE_ACCOUNT_ID        # Your prod Cloudflare account ID
+CHROME_WEBSTORE_CLIENT_ID    # For publishing to Chrome Web Store
 CHROME_WEBSTORE_CLIENT_SECRET
 CHROME_WEBSTORE_REFRESH_TOKEN
 ```
 
-### Setting Up Secrets
+### Why Environment Secrets?
 
-1. Go to Settings → Secrets and variables → Actions
-2. Add repository secrets
-3. Use environment-specific secrets
+1. **Security Isolation**: Dev environment can't access production secrets
+2. **Simplified Names**: Use `CLOUDFLARE_API_TOKEN` in both environments
+3. **Environment-specific**: Secrets only available during deployment to that environment
+4. **Audit Trail**: Better visibility of which environment accessed which secrets
 
 ## Rollback Process
 

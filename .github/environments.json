@@ -9,8 +9,8 @@
         "custom_branches": ["develop"]
       },
       "secrets": [
-        "DEV_CLOUDFLARE_API_TOKEN",
-        "DEV_CLOUDFLARE_ACCOUNT_ID"
+        "CLOUDFLARE_API_TOKEN",
+        "CLOUDFLARE_ACCOUNT_ID"
       ]
     },
     "production": {
@@ -23,8 +23,8 @@
         "custom_branches": ["main"]
       },
       "secrets": [
-        "PROD_CLOUDFLARE_API_TOKEN",
-        "PROD_CLOUDFLARE_ACCOUNT_ID",
+        "CLOUDFLARE_API_TOKEN",
+        "CLOUDFLARE_ACCOUNT_ID",
         "CHROME_WEBSTORE_CLIENT_ID",
         "CHROME_WEBSTORE_CLIENT_SECRET",
         "CHROME_WEBSTORE_REFRESH_TOKEN"
