@@ -1,16 +1,7 @@
 {
   "environments": {
     "development": {
-      "description": "Development environment for feature branches",
-      "auto_deploy": true,
-      "reviewers": [],
-      "branch_policy": {
-        "protected_branches": false,
-        "custom_branches": ["feature/*", "fix/*", "refactor/*"]
-      }
-    },
-    "staging": {
-      "description": "Staging environment for integration testing",
+      "description": "Development environment",
       "auto_deploy": true,
       "reviewers": [],
       "branch_policy": {
@@ -18,8 +9,8 @@
         "custom_branches": ["develop"]
       },
       "secrets": [
-        "STAGING_CLOUDFLARE_API_TOKEN",
-        "STAGING_CLOUDFLARE_ACCOUNT_ID"
+        "DEV_CLOUDFLARE_API_TOKEN",
+        "DEV_CLOUDFLARE_ACCOUNT_ID"
       ]
     },
     "production": {

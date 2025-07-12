@@ -2,11 +2,11 @@
 
 ## Branch Strategy
 
-We follow a modified GitFlow workflow:
+We follow a simple two-environment workflow:
 
 ```
 main          → Production (protected)
-develop       → Integration/Staging
+develop       → Development/Testing
 feature/*     → New features
 fix/*         → Bug fixes
 refactor/*    → Code improvements
@@ -51,8 +51,7 @@ git checkout -b feature/your-feature-name
 
 | Branch | Environment | Automatic | Approval Required |
 |--------|------------|-----------|-------------------|
-| feature/* | Development | ✅ | ❌ |
-| develop | Staging | ✅ | ❌ |
+| develop | Development | ✅ | ❌ |
 | main | Production | ✅ | ✅ (5 min wait) |
 
 ### Manual Release Process
@@ -78,14 +77,9 @@ git checkout -b feature/your-feature-name
 ## Environment Configuration
 
 ### Development
-- Feature branch deployments
+- Develop branch auto-deploys
 - No approval needed
-- For testing new features
-
-### Staging
-- Mirrors production
-- Develops branch auto-deploys
-- Integration testing
+- For testing and integration
 
 ### Production
 - Main branch only
@@ -108,9 +102,9 @@ Every PR runs:
 ### Required GitHub Secrets
 
 ```yaml
-# Cloudflare (Staging)
-STAGING_CLOUDFLARE_API_TOKEN
-STAGING_CLOUDFLARE_ACCOUNT_ID
+# Cloudflare (Development)
+DEV_CLOUDFLARE_API_TOKEN
+DEV_CLOUDFLARE_ACCOUNT_ID
 
 # Cloudflare (Production)
 PROD_CLOUDFLARE_API_TOKEN
