@@ -58,7 +58,7 @@ Unit tests should test individual functions and modules in isolation:
 
 ```typescript
 import { test, expect } from '@playwright/test';
-import { myFunction } from '../../src/lib/myModule';
+import { myFunction } from '../../src/shared/myModule';
 
 test.describe('MyModule', () => {
   test('should do something', () => {
@@ -74,7 +74,7 @@ E2E tests test the extension as a whole in a real browser:
 
 ```typescript
 test('should replace words on page', async ({ page }) => {
-  await page.goto('http://localhost:3000/test-page.html');
+  await page.goto('http://localhost:3000/testPage.html');
   
   // Wait for extension to process
   await page.waitForSelector('.fluent-word');

@@ -1,3 +1,14 @@
+/**
+ * Copyright (c) 2024 Fluent Language Learning Extension. All Rights Reserved.
+ * 
+ * PROPRIETARY AND CONFIDENTIAL
+ * 
+ * This file is part of the Fluent Language Learning Extension and is the
+ * proprietary and confidential property of the copyright holder. Unauthorized
+ * copying, modification, distribution, or use of this file, via any medium,
+ * is strictly prohibited.
+ */
+
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
@@ -55,7 +66,7 @@ test.describe('Build Validation Tests', () => {
     const dataPath = path.join(distPath, 'data');
     expect(fs.existsSync(dataPath)).toBeTruthy();
     
-    const commonWordsPath = path.join(dataPath, 'common-words-en.json');
+    const commonWordsPath = path.join(dataPath, 'words.json');
     expect(fs.existsSync(commonWordsPath)).toBeTruthy();
     
     // Validate JSON structure
