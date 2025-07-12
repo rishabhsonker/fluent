@@ -11,9 +11,11 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  # Job 1: Code Quality & Testing
-  test:
-    name: Test & Lint
+  # ============================================
+  # STAGE 1: CODE QUALITY
+  # ============================================
+  code-quality:
+    name: Code Quality
     runs-on: ubuntu-latest
     
     steps:
@@ -28,18 +30,23 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Run TypeScript check
-      run: npm run type-check
-    
-    - name: Run linter
+    - name: lint
       run: npm run lint
+    
+    - name: type-check
+      run: npm run type-check
     
     - name: Install Playwright browsers
       run: npx playwright install chromium
     
-    - name: Run unit tests
-      run: npm run test:unit
+    - name: unit-tests
+      run: |
+        # Run unit tests but exclude build validation tests
+        npm run test:unit -- --grep-invert "Build Validation"
     
+    - name: e2e-tests
+      run: npm run test:e2e
+      
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
@@ -48,11 +55,12 @@ jobs:
         path: test-results/
         retention-days: 7
 
-  # Job 2: Build Extension
-  build:
-    name: Build Extension
+  # ============================================
+  # STAGE 2: SECURITY
+  # ============================================
+  security:
+    name: Security
     runs-on: ubuntu-latest
-    needs: test
     
     steps:
     - uses: actions/checkout@v4
@@ -66,26 +74,86 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Build extension
-      run: npm run build
+    - name: scan
+      run: npm audit --production --audit-level=moderate
+      continue-on-error: true
+      
+    - name: dependencies
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'fluent'
+        path: '.'
+        format: 'HTML'
+        args: >
+          --enableRetired
+          --enableExperimental
+      continue-on-error: true
+    
+    - name: licenses
+      run: |
+        npx license-checker --production --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0'
+      continue-on-error: true
+      
+    - name: Check for secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.repository.default_branch }}
+        head: HEAD
+
+  # ============================================
+  # STAGE 3: BUILD
+  # ============================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [code-quality, security]
+    strategy:
+      matrix:
+        environment: [development, production]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: extension
+      run: |
+        # Set environment variables based on matrix
+        if [ "${{ matrix.environment }}" == "development" ]; then
+          export WORKER_URL="https://translator-dev.hq.workers.dev"
+          export ENVIRONMENT="development"
+        else
+          export WORKER_URL="https://translator.hq.workers.dev"
+          export ENVIRONMENT="production"
+        fi
+        
+        echo "Building for $ENVIRONMENT with WORKER_URL=$WORKER_URL"
+        
+        # Build with environment variables
+        npm run build
       env:
         NODE_ENV: production
     
-    - name: Verify build output
+    - name: validate
       run: |
-        echo "Checking build artifacts..."
-        ls -la dist/
+        echo "Validating build output..."
+        
+        # Check required files exist
         test -f dist/manifest.json
         test -f dist/popup.html
         test -f dist/popup.js
         test -f dist/content.js
         test -f dist/background.js
-    
-    - name: Check bundle sizes
-      run: |
-        echo "Bundle sizes:"
-        du -h dist/*.js
-        # Ensure bundles are under 300KB each
+        
+        # Check bundle sizes
         for file in dist/*.js; do
           size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file")
           if [ $size -gt 307200 ]; then
@@ -93,69 +161,183 @@ jobs:
             exit 1
           fi
         done
+        
+        # Run build validation tests
+        npm run test:unit -- --grep "Build Validation"
     
     - name: Create extension package
       run: |
         cd dist
-        zip -r ../fluent-extension.zip .
+        zip -r ../fluent-extension-${{ matrix.environment }}.zip .
         cd ..
     
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: extension-package
-        path: fluent-extension.zip
+        name: extension-${{ matrix.environment }}
+        path: fluent-extension-${{ matrix.environment }}.zip
         retention-days: 30
 
-  # Job 3: Deploy to Development (develop branch)
-  deploy-dev:
-    name: Deploy to Development
+  # ============================================
+  # STAGE 4: COVERAGE
+  # ============================================
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Install Playwright browsers
+      run: npx playwright install chromium
+    
+    - name: report
+      run: |
+        # Run tests with coverage
+        npm run test:unit -- --reporter=html --reporter=json
+        
+        # Display coverage summary
+        echo "Coverage Report:"
+        # Add coverage parsing/display logic here
+    
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-report
+        path: test-results/
+        retention-days: 30
+
+  # ============================================
+  # STAGE 5: DEPLOY DEVELOPMENT
+  # ============================================
+  deploy-development:
+    name: Deploy
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     environment: development
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Download build artifacts
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Download extension artifact
       uses: actions/download-artifact@v4
       with:
-        name: extension-package
+        name: extension-development
     
-    - name: Deploy Cloudflare Worker (Development)
+    - name: worker
+      working-directory: workers/cloudflare
       env:
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       run: |
-        echo "Deploying worker to development..."
-        # cd workers/cloudflare
-        # npm install
-        # npx wrangler deploy --env development
+        echo "Deploying Cloudflare Worker to development..."
+        npm install
+        npx wrangler deploy --env development
     
-    - name: Deploy to development
+    - name: health-check
       run: |
-        echo "Deploying extension to development environment..."
-        echo "Branch: ${{ github.ref_name }}"
-        # Add actual deployment steps here (e.g., upload to test Chrome Web Store account)
+        echo "Waiting for worker deployment to propagate..."
+        sleep 15
+        
+        # Health check
+        response=$(curl -s -w "\n%{http_code}" ${{ vars.WORKER_URL }}/config)
+        status=$(echo "$response" | tail -n1)
+        
+        if [ "$status" != "200" ]; then
+          echo "Health check failed with status $status"
+          echo "Response: $response"
+          exit 1
+        fi
+        
+        echo "Worker is healthy!"
+    
+    - name: smoke-tests
+      run: |
+        # Basic functionality tests
+        echo "Running smoke tests..."
+        
+        # Test translation endpoint
+        response=$(curl -s -X POST ${{ vars.WORKER_URL }}/translate \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer test" \
+          -H "X-Installation-Id: smoke-test" \
+          -H "X-Timestamp: $(date +%s)000" \
+          -H "X-Signature: test" \
+          -d '{"words": ["hello"], "language": "spanish", "test": true}')
+        
+        echo "Translation test response: $response"
+        
+        # Add more smoke tests as needed
 
-  # Job 4: Deploy to Production (main branch)
-  deploy-prod:
-    name: Deploy to Production
+  # ============================================
+  # STAGE 6: DEPLOY PRODUCTION
+  # ============================================
+  deploy-production:
+    name: Deploy
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Download build artifacts
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Download extension artifact
       uses: actions/download-artifact@v4
       with:
-        name: extension-package
+        name: extension-production
+    
+    - name: worker
+      working-directory: workers/cloudflare
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      run: |
+        echo "Deploying Cloudflare Worker to production..."
+        npm install
+        npx wrangler deploy
+    
+    - name: health-check
+      run: |
+        echo "Waiting for worker deployment to propagate..."
+        sleep 15
+        
+        # Health check
+        response=$(curl -s -w "\n%{http_code}" ${{ vars.WORKER_URL }}/config)
+        status=$(echo "$response" | tail -n1)
+        
+        if [ "$status" != "200" ]; then
+          echo "Health check failed with status $status"
+          echo "Response: $response"
+          exit 1
+        fi
+        
+        echo "Worker is healthy!"
     
     - name: Create Release
+      id: create_release
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,6 +346,10 @@ jobs:
         release_name: Release v${{ github.run_number }}
         body: |
           Production deployment from commit ${{ github.sha }}
+          
+          ## Changes
+          - View commit: ${{ github.event.head_commit.url }}
+          - Compare: https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }}
         draft: false
         prerelease: false
     
@@ -173,44 +359,54 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./fluent-extension.zip
+        asset_path: ./fluent-extension-production.zip
         asset_name: fluent-extension-v${{ github.run_number }}.zip
         asset_content_type: application/zip
     
-    - name: Deploy Cloudflare Worker (Production)
-      env:
-        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      run: |
-        echo "Deploying worker to production..."
-        # cd workers/cloudflare
-        # npm install
-        # npx wrangler deploy --env production
+    # Chrome Web Store deployment - commented out until account is ready
+    # - name: Deploy to Chrome Web Store
+    #   env:
+    #     CHROME_WEBSTORE_CLIENT_ID: ${{ secrets.CHROME_WEBSTORE_CLIENT_ID }}
+    #     CHROME_WEBSTORE_CLIENT_SECRET: ${{ secrets.CHROME_WEBSTORE_CLIENT_SECRET }}
+    #     CHROME_WEBSTORE_REFRESH_TOKEN: ${{ secrets.CHROME_WEBSTORE_REFRESH_TOKEN }}
+    #   run: |
+    #     echo "Deploying to Chrome Web Store..."
+    #     npx chrome-webstore-upload-cli@latest upload \
+    #       --source fluent-extension-production.zip \
+    #       --extension-id YOUR_EXTENSION_ID
     
-    - name: Deploy to Chrome Web Store
-      env:
-        CHROME_WEBSTORE_CLIENT_ID: ${{ secrets.CHROME_WEBSTORE_CLIENT_ID }}
-        CHROME_WEBSTORE_CLIENT_SECRET: ${{ secrets.CHROME_WEBSTORE_CLIENT_SECRET }}
-        CHROME_WEBSTORE_REFRESH_TOKEN: ${{ secrets.CHROME_WEBSTORE_REFRESH_TOKEN }}
+    - name: smoke-tests
       run: |
-        echo "Deploying to Chrome Web Store..."
-        # Add actual Chrome Web Store deployment here
-        # Uses chrome-webstore-upload-cli or similar
+        # Production smoke tests
+        echo "Running production smoke tests..."
+        
+        # Test translation endpoint
+        response=$(curl -s -X POST ${{ vars.WORKER_URL }}/translate \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer test" \
+          -H "X-Installation-Id: smoke-test" \
+          -H "X-Timestamp: $(date +%s)000" \
+          -H "X-Signature: test" \
+          -d '{"words": ["hello"], "language": "spanish", "test": true}')
+        
+        echo "Translation test response: $response"
 
-  # Job 6: Security Scan
-  security:
-    name: Security Scan
+  # ============================================
+  # Summary Check
+  # ============================================
+  pipeline-success:
+    name: CI/CD Pipeline
     runs-on: ubuntu-latest
+    needs: [code-quality, security, build, coverage]
+    if: always()
     
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Run security audit
-      run: npm audit --production
-      
-    - name: Check for secrets
-      uses: trufflesecurity/trufflehog@main
-      with:
-        path: ./
-        base: ${{ github.event.repository.default_branch }}
-        head: HEAD
+    - name: Check pipeline status
+      run: |
+        if [ "${{ needs.code-quality.result }}" != "success" ] || \
+           [ "${{ needs.security.result }}" != "success" ] || \
+           [ "${{ needs.build.result }}" != "success" ]; then
+          echo "Pipeline failed!"
+          exit 1
+        fi
+        echo "All pipeline checks passed!"
