@@ -19,6 +19,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export default defineConfig({
+  define: {
+    // Inject environment variables - these will be replaced at build time
+    __WORKER_URL__: JSON.stringify(process.env.WORKER_URL || 'https://translator-dev.hq.workers.dev'),
+    __ENVIRONMENT__: JSON.stringify(process.env.ENVIRONMENT || 'development'),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString())
+  },
   plugins: [
     react(),
     {

@@ -219,50 +219,13 @@ export const WORD_CONFIG: WordConfig = {
 // Note: Mock translations have been moved to development-only files
 // and should not be included in production builds
 
-// Try to import build config (generated at build time)
-let BUILD_CONFIG: any = null;
-try {
-  // This will fail if the file doesn't exist (local dev without build script)
-  BUILD_CONFIG = require('../generated/build-config').BUILD_CONFIG;
-} catch {
-  // Fallback to defaults
-}
+// Import environment config
+import { config } from './config';
 
 // API Configuration
 export const getApiEndpoint = (): string => {
-  // Use build-time config if available (production builds)
-  if (BUILD_CONFIG) {
-    try {
-      const manifest = chrome.runtime.getManifest();
-      const version = manifest.version;
-      
-      if (version.includes('dev') || version.includes('0.0.0')) {
-        return BUILD_CONFIG.DEVELOPMENT_API;
-      }
-      return BUILD_CONFIG.PRODUCTION_API;
-    } catch {
-      // Fallback to legacy URL for backward compatibility
-      return 'https://fluent-translator.hq.workers.dev';
-    }
-  }
-  
-  // Fallback to hardcoded values (local development)
-  try {
-    const manifest = chrome.runtime.getManifest();
-    const version = manifest.version;
-    
-    // Development builds (version contains 'dev' or is 0.0.0)
-    if (version.includes('dev') || version.includes('0.0.0')) {
-      return 'https://translator-dev.hq.workers.dev';
-    }
-    
-    // Production builds
-    return 'https://translator.hq.workers.dev';
-  } catch {
-    // Fallback if chrome.runtime is not available
-    // Keep existing URL for backward compatibility
-    return 'https://fluent-translator.hq.workers.dev';
-  }
+  // Use injected WORKER_URL from build process
+  return config.WORKER_URL;
 };
 
 export const API_CONFIG: ApiConfig = {
