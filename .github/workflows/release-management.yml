@@ -1,0 +1,112 @@
+name: Release Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.2.0)'
+        required: true
+        type: string
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: develop
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Configure Git
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+    
+    - name: Update version
+      run: |
+        # Update package.json version
+        npm version ${{ inputs.version }} --no-git-tag-version
+        
+        # Update manifest.json version
+        node -e "
+        const fs = require('fs');
+        const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+        manifest.version = '${{ inputs.version }}';
+        fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\\n');
+        "
+    
+    - name: Create release branch
+      run: |
+        git checkout -b release/${{ inputs.version }}
+        git add package.json package-lock.json manifest.json
+        git commit -m "chore: bump version to ${{ inputs.version }}"
+        git push -u origin release/${{ inputs.version }}
+    
+    - name: Create Pull Request to main
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { data: pr } = await github.rest.pulls.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Release v${{ inputs.version }}`,
+            body: `## Release v${{ inputs.version }}
+            
+            This PR merges the release branch into main for production deployment.
+            
+            ### Checklist
+            - [ ] All tests passing
+            - [ ] Version numbers updated
+            - [ ] CHANGELOG.md updated
+            - [ ] No console.log statements in production code
+            - [ ] Bundle sizes under limits
+            
+            ### Deployment
+            Once merged, this will automatically:
+            1. Deploy to production
+            2. Create a GitHub release
+            3. Upload to Chrome Web Store
+            `,
+            head: `release/${{ inputs.version }}`,
+            base: 'main',
+            draft: false
+          });
+          
+          console.log(`Created PR: ${pr.html_url}`);
+
+  sync-develop:
+    name: Sync develop with main
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Configure Git
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+    
+    - name: Sync develop branch
+      run: |
+        git checkout develop
+        git merge main --no-ff -m "chore: sync develop with main after release"
+        git push origin develop

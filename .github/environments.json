@@ -1,0 +1,43 @@
+{
+  "environments": {
+    "development": {
+      "description": "Development environment for feature branches",
+      "auto_deploy": true,
+      "reviewers": [],
+      "branch_policy": {
+        "protected_branches": false,
+        "custom_branches": ["feature/*", "fix/*", "refactor/*"]
+      }
+    },
+    "staging": {
+      "description": "Staging environment for integration testing",
+      "auto_deploy": true,
+      "reviewers": [],
+      "branch_policy": {
+        "protected_branches": false,
+        "custom_branches": ["develop"]
+      },
+      "secrets": [
+        "STAGING_CLOUDFLARE_API_TOKEN",
+        "STAGING_CLOUDFLARE_ACCOUNT_ID"
+      ]
+    },
+    "production": {
+      "description": "Production environment",
+      "auto_deploy": false,
+      "reviewers": ["@rs"],
+      "wait_timer": 5,
+      "branch_policy": {
+        "protected_branches": true,
+        "custom_branches": ["main"]
+      },
+      "secrets": [
+        "PROD_CLOUDFLARE_API_TOKEN",
+        "PROD_CLOUDFLARE_ACCOUNT_ID",
+        "CHROME_WEBSTORE_CLIENT_ID",
+        "CHROME_WEBSTORE_CLIENT_SECRET",
+        "CHROME_WEBSTORE_REFRESH_TOKEN"
+      ]
+    }
+  }
+}
