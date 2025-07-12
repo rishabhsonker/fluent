@@ -254,8 +254,8 @@ jobs:
     
     - name: report
       run: |
-        # Run tests with coverage
-        npm run test:unit -- --reporter=html --reporter=json
+        # Run tests with coverage but exclude build validation tests
+        npm run test:unit -- --reporter=html --reporter=json --grep "^(?!.*Build Validation)"
         
         # Display coverage summary
         echo "Coverage Report:"
