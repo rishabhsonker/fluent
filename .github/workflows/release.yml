@@ -23,6 +23,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Generate build config
+        env:
+          PRODUCTION_API: ${{ secrets.PRODUCTION_API || 'https://translator.hq.workers.dev' }}
+          DEVELOPMENT_API: ${{ secrets.DEVELOPMENT_API || 'https://translator-dev.hq.workers.dev' }}
+        run: node scripts/build-config.js
+      
       - name: Build extension
         run: npm run package
       

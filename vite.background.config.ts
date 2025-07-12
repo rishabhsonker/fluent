@@ -1,3 +1,14 @@
+/**
+ * Copyright (c) 2024 Fluent Language Learning Extension. All Rights Reserved.
+ * 
+ * PROPRIETARY AND CONFIDENTIAL
+ * 
+ * This file is part of the Fluent Language Learning Extension and is the
+ * proprietary and confidential property of the copyright holder. Unauthorized
+ * copying, modification, distribution, or use of this file, via any medium,
+ * is strictly prohibited.
+ */
+
 import { defineConfig } from 'vite';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -10,7 +21,7 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: false,
     lib: {
-      entry: resolve(__dirname, 'src/background/service-worker.ts'),
+      entry: resolve(__dirname, 'src/core/worker.ts'),
       name: 'FluentBackground',
       formats: ['iife'],
       fileName: () => 'background.js'
@@ -39,10 +50,9 @@ export default defineConfig({
     extensions: ['.ts', '.tsx', '.js', '.jsx'],
     alias: {
       '@': resolve(__dirname, 'src'),
-      '@lib': resolve(__dirname, 'src/lib'),
-      '@content': resolve(__dirname, 'src/content'),
-      '@popup': resolve(__dirname, 'src/popup'),
-      '@background': resolve(__dirname, 'src/background'),
+      '@features': resolve(__dirname, 'src/features'),
+      '@core': resolve(__dirname, 'src/core'),
+      '@shared': resolve(__dirname, 'src/shared'),
       '@types': resolve(__dirname, 'src/types')
     }
   }

@@ -1,3 +1,14 @@
+/**
+ * Copyright (c) 2024 Fluent Language Learning Extension. All Rights Reserved.
+ * 
+ * PROPRIETARY AND CONFIDENTIAL
+ * 
+ * This file is part of the Fluent Language Learning Extension and is the
+ * proprietary and confidential property of the copyright holder. Unauthorized
+ * copying, modification, distribution, or use of this file, via any medium,
+ * is strictly prohibited.
+ */
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve, dirname } from 'path';
@@ -19,9 +30,9 @@ export default defineConfig({
         }
         
         // Copy popup CSS
-        if (existsSync('src/popup/popup.css')) {
+        if (existsSync('src/features/ui/popup/popup.css')) {
           copyFileSync(
-            resolve(__dirname, 'src/popup/popup.css'),
+            resolve(__dirname, 'src/features/ui/popup/popup.css'),
             resolve(__dirname, 'dist/popup.css')
           );
         }
@@ -32,22 +43,11 @@ export default defineConfig({
           resolve(__dirname, 'dist/manifest.json')
         );
 
-        // Copy content styles to both locations for compatibility
-        if (existsSync('src/content/styles.css')) {
-          // Copy to root as content.css
+        // Copy content styles
+        if (existsSync('src/features/translation/styles.css')) {
           copyFileSync(
-            resolve(__dirname, 'src/content/styles.css'),
+            resolve(__dirname, 'src/features/translation/styles.css'),
             resolve(__dirname, 'dist/content.css')
-          );
-          
-          // Also copy to content/styles.css to match the import
-          const contentDir = resolve(__dirname, 'dist/content');
-          if (!existsSync(contentDir)) {
-            mkdirSync(contentDir, { recursive: true });
-          }
-          copyFileSync(
-            resolve(__dirname, 'src/content/styles.css'),
-            resolve(__dirname, 'dist/content/styles.css')
           );
         }
 
@@ -118,10 +118,9 @@ export default defineConfig({
     extensions: ['.ts', '.tsx', '.js', '.jsx'],
     alias: {
       '@': resolve(__dirname, 'src'),
-      '@lib': resolve(__dirname, 'src/lib'),
-      '@content': resolve(__dirname, 'src/content'),
-      '@popup': resolve(__dirname, 'src/popup'),
-      '@background': resolve(__dirname, 'src/background'),
+      '@features': resolve(__dirname, 'src/features'),
+      '@core': resolve(__dirname, 'src/core'),
+      '@shared': resolve(__dirname, 'src/shared'),
       '@types': resolve(__dirname, 'src/types')
     }
   },

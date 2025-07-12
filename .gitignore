@@ -1,76 +1,194 @@
-# dependencies
+# ===========================
+# Dependencies
+# ===========================
 node_modules/
 .pnp
 .pnp.js
+.yarn/
 
-# production
+# ===========================
+# Build Output
+# ===========================
 dist/
 build/
+out/
 *.zip
-
-# misc
-.DS_Store
+*.crx
 *.pem
-keys/
+*.xpi
+
+# ===========================
+# Generated Files
+# ===========================
+src/generated/
+*.min.js
+*.min.css
+
+# ===========================
+# Environment Variables
+# ===========================
+.env
+.env.*
+!.env.example
+.dev.vars
+*.env
+
+# ===========================
+# Logs
+# ===========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ===========================
+# Test Coverage & Reports
+# ===========================
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+junit.xml
+*.lcov
+
+# ===========================
+# Cache Directories
+# ===========================
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vuepress/dist/
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
+.vscode-test/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# ===========================
+# Editor & IDE
+# ===========================
 .vscode/
 .idea/
 *.swp
 *.swo
+*.swn
 *~
-.cache/
+.project
+.classpath
+.c9/
+*.sublime-workspace
+*.sublime-project
+.history/
 
-# debug
+# ===========================
+# OS Files
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ===========================
+# Cloudflare Workers
+# ===========================
+.wrangler/
+workers/**/.wrangler/
+wrangler.log
+.mf/
+
+# ===========================
+# Security & Keys
+# ===========================
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+api-keys.json
+secrets.json
+credentials.json
+keys/
+certs/
+
+# ===========================
+# Temporary Files
+# ===========================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+
+# ===========================
+# Documentation (Project Specific)
+# ===========================
+# Keep only essential documentation
+*.md
+!README.md
+!SECURITY.md
+
+# ===========================
+# Claude AI Working Files
+# ===========================
+CLAUDE.md
+CODEBASE.md
+GUIDELINES.md
+ISSUES.md
+LOGS.md
+PLAN.md
+TESTS.md
+
+# ===========================
+# Local Development
+# ===========================
+local-config.json
+dev-notes.txt
+TODO.txt
+NOTES.txt
+scratch/
+tmp/
+
+# ===========================
+# Package Manager Files
+# ===========================
+pnpm-lock.yaml
+.pnpm-store/
+
+# ===========================
+# Python (if any scripts)
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# ===========================
+# Miscellaneous
+# ===========================
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-*.log
-
-# env files
-.env*.local
-.env
-.dev.vars
-
-# OS files
-Thumbs.db
-
-# Project-specific development files
-CLAUDE.md
-TODO.md
-NOTES.md
-AUDIT_REPORT.md
-CODE_AUDIT_REPORT.md
-QUICK_START.md
-TESTING_GUIDE.md
-PRODUCTION_CHECKLIST.md
-TECH_DEBT_CLEANUP.md
-*.backup
-*.tmp
-*-dev.md
-*-draft.md
-
-# API keys and secrets
-api-keys.json
-secrets.json
-*.key
-
-# Local development files
-local-config.json
-dev-notes.txt
-
-# Test coverage
-coverage/
-.nyc_output/
-
-# Playwright test results
-test-results/
-playwright-report/
-playwright/.cache/
-
-# Editor specific
-*.sublime-workspace
-*.sublime-project
-
-# Cloudflare Workers
-.wrangler/
-workers/cloudflare/.wrangler/
-wrangler.log

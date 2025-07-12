@@ -19,11 +19,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@lib/*": ["src/lib/*"],
-      "@content/*": ["src/content/*"],
-      "@popup/*": ["src/popup/*"],
-      "@background/*": ["src/background/*"],
-      "@types/*": ["src/types/*"]
+      "@features/*": ["src/features/*"],
+      "@core/*": ["src/core/*"],
+      "@shared/*": ["src/shared/*"]
     }
   },
   "include": [

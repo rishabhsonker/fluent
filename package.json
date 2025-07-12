@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "pre-publish": "node scripts/pre-publish.js",
+    "pre-publish": "node scripts/publish.js",
     "package": "npm run build && cd dist && zip -r ../fluent.zip . && cd ..",
     "package:dev": "npm run build:dev && cd dist && zip -r ../fluent-dev.zip . && cd ..",
     "check": "npm run type-check && npm run build && npm run pre-publish",

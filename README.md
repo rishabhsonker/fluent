@@ -2,11 +2,8 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/github/v/release/rishabhsonker/fluent?label=version)](https://github.com/rishabhsonker/fluent/releases)
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Coming%20Soon-green.svg)](#)
-[![Tests](https://github.com/rishabhsonker/fluent/actions/workflows/test.yml/badge.svg)](https://github.com/rishabhsonker/fluent/actions/workflows/test.yml)
-[![Worker Deploy](https://github.com/rishabhsonker/fluent/actions/workflows/cloudflare-worker.yml/badge.svg)](https://github.com/rishabhsonker/fluent/actions/workflows/cloudflare-worker.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 
 [![Languages](https://img.shields.io/badge/🇪🇸_Spanish-red.svg)](#)
 [![Languages](https://img.shields.io/badge/🇫🇷_French-blue.svg)](#)
@@ -43,20 +40,8 @@
 ### Chrome Web Store
 🚧 **Coming Soon** - Currently in review
 
-### Build from Source
-```bash
-# Clone and build
-git clone https://github.com/rishabhsonker/fluent.git
-cd fluent
-npm install
-npm run build
-
-# Load in Chrome
-# 1. Open chrome://extensions/
-# 2. Enable "Developer mode"
-# 3. Click "Load unpacked"
-# 4. Select the `dist` folder
-```
+### For Developers
+This is proprietary software. Source code is not publicly available.
 
 ## 🚀 Getting Started
 
@@ -77,70 +62,42 @@ npm run build
 
 ### 📊 Usage Limits
 
-| Feature | Free Tier | With API Key |
+| Feature | Free Tier | Premium Tier |
 |---------|-----------|--------------|
-| **Translations** | 100/hour, 1000/day | Unlimited |
-| **Context Hovering** | 50/minute | Unlimited |
-| **Devices** | Per-device limits | Shared quota |
+| **Translations** | 50/day | Unlimited |
+| **Languages** | 1 | All available |
+| **Context Explanations** | Basic | Advanced AI |
+| **Offline Mode** | ❌ | ✅ |
 
-## ⚙️ Configuration
+## 💎 Premium Features
 
-### 🔑 API Keys (Optional)
-Add your own API keys for unlimited usage:
-- **Microsoft Translator** - For translations
-- **Claude API** - For contextual explanations
+Upgrade to Fluent Premium for:
+- ✅ Unlimited translations
+- ✅ All languages unlocked
+- ✅ Advanced AI explanations
+- ✅ Offline mode
+- ✅ Priority support
+- ✅ Learning analytics
 
-### ☁️ Cloudflare Worker Deployment
-```bash
-# Deploy the worker
-cd workers/cloudflare
-wrangler deploy --env production
+## 🔒 Security & Privacy
 
-# Set API secrets
-wrangler secret put MICROSOFT_TRANSLATOR_KEY
-wrangler secret put CLAUDE_API_KEY
-```
+- **Local storage only** - Your learning data never leaves your device
+- **No tracking** - We don't collect usage data
+- **Secure API** - All communications encrypted
+- **Regular audits** - Security updates monthly
 
-## 👩‍💻 Development
+## 📧 Support
 
-### Commands
-```bash
-npm run dev          # Development mode with hot reload
-npm run build        # Production build
-npm run test         # Run all tests
-npm run test:unit    # Unit tests only (52 tests)
-npm run test:e2e     # E2E tests (requires built extension)
-npm run package      # Create distribution ZIP
-```
+For support, licensing inquiries, or bug reports:
+- Email: [support email coming soon]
+- Help Center: [coming soon]
 
-### 🏗️ Architecture
+## 📄 License
 
-| Component | Technology |
-|-----------|-----------|
-| **Frontend** | TypeScript, React, Vite |
-| **API Proxy** | Cloudflare Workers + KV Cache |
-| **Translation** | Microsoft Translator API |
-| **AI Context** | Claude 3 Haiku |
-| **Authentication** | HMAC + Installation Tokens |
-| **Storage** | Chrome Storage API (local) |
+Copyright © 2024 Fluent Language Learning Extension. All Rights Reserved.
 
-## 🔒 Security
+This is proprietary software. See [LICENSE](LICENSE) for details.
 
-- **Installation-based authentication** - Unique tokens per device
-- **HMAC request signing** - Prevents tampering
-- **Rate limiting** - Per-device quotas
-- **Local storage only** - No cloud sync
+---
 
-See [SECURITY.md](SECURITY.md) for full details.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-Apache License 2.0 - see [LICENSE](LICENSE) for details.
+**Fluent** - Making language learning as natural as breathing.
