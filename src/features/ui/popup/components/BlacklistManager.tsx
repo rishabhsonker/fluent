@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safe, chromeCall, safeSync } from '../../../../shared/utils/helpers';
 
 interface CategoryConfig {
   name: string;
@@ -50,8 +51,8 @@ const BlacklistManager: React.FC = () => {
   }, []);
 
   async function loadBlacklist(): Promise<void> {
-    try {
-      const result = await chrome.storage.sync.get('blacklist_settings');
+    await safe(async () => {
+      const result = await chromeCall(() => chrome.storage.sync.get('blacklist_settings'), 'get blacklist settings');
       const settings = (result.blacklist_settings || { categories: {}, customSites: [] }) as BlacklistSettings;
       
       setCustomSites(settings.customSites || []);
@@ -62,22 +63,18 @@ const BlacklistManager: React.FC = () => {
         categoryStates[key] = settings.categories[key] !== false;
       }
       setCategories(categoryStates);
-    } catch (error) {
-      // Error loading blacklist - use empty list
-    }
+    }, 'Loading blacklist settings');
   }
 
   async function saveBlacklist(): Promise<void> {
-    try {
-      await chrome.storage.sync.set({
+    await safe(async () => {
+      await chromeCall(() => chrome.storage.sync.set({
         blacklist_settings: {
           categories,
           customSites
         }
-      });
-    } catch (error) {
-      // Error saving blacklist - will retry on next interaction
-    }
+      }), 'save blacklist settings');
+    }, 'Saving blacklist settings');
   }
 
   async function addSite(): Promise<void> {
@@ -90,12 +87,14 @@ const BlacklistManager: React.FC = () => {
       setNewSite('');
       
       // Save immediately
-      await chrome.storage.sync.set({
-        blacklist_settings: {
-          categories,
-          customSites: updated
-        }
-      });
+      await safe(async () => {
+        await chromeCall(() => chrome.storage.sync.set({
+          blacklist_settings: {
+            categories,
+            customSites: updated
+          }
+        }), 'save updated blacklist');
+      }, 'Saving updated blacklist');
     }
   }
 
@@ -104,12 +103,14 @@ const BlacklistManager: React.FC = () => {
     setCustomSites(updated);
     
     // Save immediately
-    await chrome.storage.sync.set({
-      blacklist_settings: {
-        categories,
-        customSites: updated
-      }
-    });
+    await safe(async () => {
+      await chromeCall(() => chrome.storage.sync.set({
+        blacklist_settings: {
+          categories,
+          customSites: updated
+        }
+      }), 'save blacklist after removal');
+    }, 'Saving updated blacklist after removal');
   }
 
   async function toggleCategory(key: string): Promise<void> {
@@ -117,40 +118,40 @@ const BlacklistManager: React.FC = () => {
     setCategories(updated);
     
     // Save immediately
-    await chrome.storage.sync.set({
-      blacklist_settings: {
-        categories: updated,
-        customSites
-      }
-    });
+    await safe(async () => {
+      await chromeCall(() => chrome.storage.sync.set({
+        blacklist_settings: {
+          categories: updated,
+          customSites
+        }
+      }), 'save category toggle');
+    }, 'Saving category toggle');
   }
 
   async function addCurrentSite(): Promise<void> {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.url) {
-      try {
+    await safe(async () => {
+      const [tab] = await chromeCall(() => chrome.tabs.query({ active: true, currentWindow: true }), 'query active tab');
+      if (tab && tab.url) {
         const url = new URL(tab.url);
         const hostname = url.hostname;
         if (!customSites.includes(hostname)) {
           const updated = [...customSites, hostname];
           setCustomSites(updated);
           
-          await chrome.storage.sync.set({
+          await chromeCall(() => chrome.storage.sync.set({
             blacklist_settings: {
               categories,
               customSites: updated
             }
-          });
+          }), 'save new site to blacklist');
           
           // Reload the tab
           if (tab.id) {
-            chrome.tabs.reload(tab.id);
+            await chromeCall(() => chrome.tabs.reload(tab.id!), 'reload tab');
           }
         }
-      } catch (error) {
-        // Error adding current site - UI will handle
       }
-    }
+    }, 'Adding current site to blacklist');
   }
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {

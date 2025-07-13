@@ -32,7 +32,8 @@ import {
   VALIDATION_LIMITS, 
   VALIDATION_PATTERNS, 
   ENCODING_CHECKS 
-} from './validation-constants';
+} from './validation';
+import { safeSync } from './utils/helpers';
 
 /**
  * Sanitize text content to prevent XSS attacks
@@ -141,13 +142,11 @@ export function setSafeAttribute(element: Element, name: string, value: string):
  * Validate URL for safety
  */
 export function isSafeUrl(url: string): boolean {
-  try {
+  return safeSync(() => {
     const parsed = new URL(url);
     // Only allow http, https, and chrome-extension protocols
     return ['http:', 'https:', 'chrome-extension:'].includes(parsed.protocol);
-  } catch {
-    return false;
-  }
+  }, 'URL validation', false);
 }
 
 /**

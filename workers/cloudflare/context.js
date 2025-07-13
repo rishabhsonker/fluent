@@ -5,7 +5,8 @@
 
 import { logInfo, logError } from './logger.js';
 import { generateContextForWord } from './api.js';
-import { CACHE_TTL } from './cache.js';
+import { storeContextVariations } from './cache.js';
+import { safe } from './utils.js';
 
 /**
  * Generate multiple basic context variations without API call
@@ -132,7 +133,7 @@ export function generateBasicContext(words, translations, targetLanguage) {
 export async function handleContextOnly(request, env, ctx) {
   const startTime = Date.now();
   
-  try {
+  return await safe(async () => {
     const body = await request.json();
     const { word, translation, targetLanguage, sentence } = body;
     
@@ -149,19 +150,40 @@ export async function handleContextOnly(request, env, ctx) {
       });
     }
     
-    // Check context cache first
-    const cacheKey = `context:${targetLanguage}:${word.toLowerCase().trim()}`;
-    const cached = env.TRANSLATION_CACHE ? await env.TRANSLATION_CACHE.get(cacheKey) : null;
-    
-    if (cached) {
-      logInfo('Context cache hit', { word, targetLanguage });
-      return new Response(JSON.stringify({ 
-        context: JSON.parse(cached),
-        cached: true
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // Check context cache in D1 first
+    if (env.DB) {
+      const cacheResponse = await safe(async () => {
+        const cached = await env.DB.prepare(`
+          SELECT translation, pronunciation, context, etymology 
+          FROM translations 
+          WHERE word = ? AND language = ?
+        `).bind(word.toLowerCase().trim(), targetLanguage).first();
+        
+        if (cached && cached.context) {
+          // Parse and return a random context from the array
+          const contexts = JSON.parse(cached.context);
+          if (Array.isArray(contexts) && contexts.length > 0) {
+            const selectedContext = contexts[Math.floor(Math.random() * contexts.length)];
+            logInfo('Context cache hit', { word, targetLanguage });
+            return new Response(JSON.stringify({ 
+              context: {
+                pronunciation: cached.pronunciation || selectedContext.pronunciation,
+                meaning: selectedContext.meaning,
+                example: selectedContext.example
+              },
+              cached: true
+            }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+        }
+        return null;
+      }, 'Error checking context cache');
+      
+      if (cacheResponse) {
+        return cacheResponse;
+      }
     }
     
     // Apply rate limiting for AI context generation
@@ -197,14 +219,16 @@ export async function handleContextOnly(request, env, ctx) {
       env
     );
     
-    // Cache the context
-    if (context) {
+    // Cache the context in D1
+    if (context && env.DB) {
+      const contexts = [{
+        pronunciation: context.pronunciation,
+        meaning: context.meaning,
+        example: context.example
+      }];
+      
       ctx.waitUntil(
-        env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
-          cacheKey, 
-          JSON.stringify(context), 
-          { expirationTtl: CACHE_TTL.TRANSLATION }
-        )
+        storeContextVariations(env, targetLanguage, word, translation, contexts)
       );
     }
     
@@ -221,15 +245,11 @@ export async function handleContextOnly(request, env, ctx) {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
-    
-  } catch (error) {
-    logError('Context generation error', error);
-    return new Response(JSON.stringify({ 
-      error: 'Context generation failed',
-      context: null
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  }, 'Context generation error', new Response(JSON.stringify({ 
+    error: 'Context generation failed',
+    context: null
+  }), {
+    status: 500,
+    headers: { 'Content-Type': 'application/json' },
+  }));
 }

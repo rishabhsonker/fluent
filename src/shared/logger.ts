@@ -190,7 +190,14 @@ export const logger = new Logger();
 // For production: Override console methods to prevent any accidental logging
 (() => {
   // Only override in production
-  if (!import.meta.env.DEV && import.meta.env.VITE_FLUENT_DEBUG !== 'true') {
+  const isDev = typeof import.meta !== 'undefined' && 
+                import.meta.env && 
+                import.meta.env.DEV;
+  const isDebug = typeof import.meta !== 'undefined' && 
+                  import.meta.env && 
+                  import.meta.env.VITE_FLUENT_DEBUG === 'true';
+  
+  if (!isDev && !isDebug) {
     const noop = (): void => {};
     // Keep error and warn for critical issues only
     console.log = noop;

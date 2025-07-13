@@ -23,7 +23,8 @@ export default defineConfig({
     // Inject environment variables - these will be replaced at build time
     __WORKER_URL__: JSON.stringify(process.env.WORKER_URL || 'https://translator-dev.hq.workers.dev'),
     __ENVIRONMENT__: JSON.stringify(process.env.ENVIRONMENT || 'development'),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString())
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __SENTRY_DSN__: JSON.stringify(process.env.SENTRY_DSN || '')
   },
   plugins: [
     react(),

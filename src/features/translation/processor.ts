@@ -34,6 +34,7 @@
 'use strict';
 
 import { logger } from '../../shared/logger';
+import { safeSync } from '../../shared/utils/helpers';
 
 // Type definitions
 interface ProcessorConfig {
@@ -151,14 +152,17 @@ export class TextProcessor {
       }
       
       // Process node
-      try {
-        const result = callback(node);
-        if (result) {
-          results.push(result);
+      const result = safeSync(() => {
+        const res = callback(node);
+        if (res) {
+          results.push(res);
           this.processedNodes.add(node);
         }
-      } catch (error) {
-        logger.error('Error processing node:', error);
+        return res;
+      }, 'Processing text node', null);
+      
+      if (result) {
+        // Already added to results in the callback
       }
     }
     

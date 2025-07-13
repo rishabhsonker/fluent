@@ -81,10 +81,97 @@ Required in Cloudflare (set via dashboard or wrangler secret):
 - `CLAUDE_API_KEY` - Anthropic Claude API key for context generation
 - `AZURE_REGION` - Azure region for translator (default: eastus)
 
-## KV Namespaces
+## D1 Databases (DEPLOYED)
 
-The worker uses KV for caching translations:
-- Production: `90eca25c86964d90b4421803ce41094c`
-- Preview: `d5bd562d385b4dde947f290af8fe553b`
+The worker uses D1 for all data storage:
+- **Production**: `translator` (ID: f1a6d16b-cc72-48a0-bc33-8ec71f75b75c)
+  - Status: ✅ DEPLOYED with 12 tables total
+  - Schema: Applied July 13, 2025
+  - Verified: July 13, 2025
+- **Development**: `translator-dev` (ID: 53323f1e-ce8a-4ba3-8732-5b62b088cdf2)
+  - Status: ✅ DEPLOYED with 12 tables total
+  - Schema: Applied July 13, 2025
+  - Verified: July 13, 2025
 
 These are already configured in `wrangler.toml`.
+
+### Database Verification Results
+
+Both databases contain the following tables (verified via REST API):
+
+**Schema Tables (9)**:
+- `billing_events` - Stripe webhook history and payment records
+- `installations` - Browser extension instances
+- `referrals` - Referral program tracking
+- `translations` - Cached translations with pronunciation
+- `user_preferences` - Language settings and blocklist
+- `user_stats` - Lifetime learning statistics
+- `user_tracking` - Daily usage counters for rate limiting
+- `users` - User accounts with plan info
+- `word_progress` - Per-word learning progress
+
+**System Tables (3)**:
+- `_cf_KV` - Cloudflare KV compatibility table
+- `d1_migrations` - D1 migration tracking
+- `sqlite_sequence` - SQLite autoincrement tracking
+
+All tables are currently empty (0 rows) - ready for production data.
+
+### Database Management
+
+#### Using Wrangler (Recommended - No Auth Issues)
+```bash
+# List all tables
+wrangler d1 execute translator-dev --command="SELECT name FROM sqlite_master WHERE type='table';" --remote
+
+# Check specific table
+wrangler d1 execute translator-dev --command="SELECT * FROM users LIMIT 10;" --remote
+
+# Count records
+wrangler d1 execute translator --command="SELECT COUNT(*) FROM translations;" --remote
+```
+
+#### Using REST API with Wrangler Environment Variables
+```bash
+# Wrangler automatically sets these environment variables when logged in:
+# - CLOUDFLARE_API_TOKEN
+# - CLOUDFLARE_ACCOUNT_ID
+
+# Query using curl with Wrangler's auth
+curl -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/translator-dev/query" \
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "SELECT name FROM sqlite_master WHERE type=\"table\";"}'
+
+# Or use jq for cleaner output
+curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/translator/query" \
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "SELECT COUNT(*) as count FROM users;"}' | jq '.result[0].results'
+```
+
+#### Applying Migrations
+```bash
+# Apply to development first
+wrangler d1 execute translator-dev --file=migrations/[migration-file].sql --remote
+
+# Then to production
+wrangler d1 execute translator --file=migrations/[migration-file].sql --remote
+```
+
+#### Useful Database Queries
+```bash
+# Show all tables with row counts
+wrangler d1 execute translator --command="
+  SELECT name, 
+    (SELECT COUNT(*) FROM sqlite_master sm WHERE sm.name = m.name) as row_count 
+  FROM sqlite_master m 
+  WHERE type='table' 
+  ORDER BY name;" --remote
+
+# Check database size
+wrangler d1 execute translator --command="SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size();" --remote
+
+# View table schema
+wrangler d1 execute translator --command="PRAGMA table_info(users);" --remote
+```

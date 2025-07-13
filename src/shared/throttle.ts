@@ -262,6 +262,12 @@ export class RateLimiter {
     }
   }
 
+  // Cleanup method to prevent memory leaks
+  destroy(): void {
+    this.stopCleanupTimer();
+    this.requests.clear();
+  }
+
   // Circuit breaker pattern for API protection
   async withRateLimit<T>(
     type: RateLimitType, 

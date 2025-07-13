@@ -2,6 +2,10 @@
 'use strict';
 
 import { storage } from './storage';
+import { getErrorHandler } from '../../shared/utils/error-handler';
+import { safeSync, safe } from '../../shared/utils/helpers';
+
+const errorHandler = getErrorHandler();
 
 // Default blacklisted patterns - sensitive sites that should never be translated
 const DEFAULT_BLACKLIST: RegExp[] = [
@@ -279,12 +283,9 @@ export class BlacklistManager {
     const settings = stored || { categories: {}, customSites: [] };
     
     this.customPatterns = settings.customSites.map((site: string) => {
-      try {
-        return new RegExp(site, 'i');
-      } catch (e) {
-        // If regex is invalid, treat as literal string
-        return new RegExp(site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      }
+      return safeSync(() => new RegExp(site, 'i'), 'Creating custom pattern regex',
+        new RegExp(site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      );
     });
     
     // Build cache
@@ -326,7 +327,7 @@ export class BlacklistManager {
       return this.urlCache.get(url)!;
     }
     
-    try {
+    return safeSync(() => {
       const urlObj = new URL(url);
       const hostname = urlObj.hostname;
       const pathname = urlObj.pathname;
@@ -355,11 +356,7 @@ export class BlacklistManager {
       this.urlCache.set(url, isBlocked);
       
       return isBlocked;
-    } catch (e) {
-      // Invalid URL - cache and block
-      this.urlCache.set(url, true);
-      return true; // Err on the side of caution
-    }
+    }, 'URL blacklist check', true); // Err on the side of caution
   }
 
   // Check if current site should be processed
@@ -382,15 +379,11 @@ export class BlacklistManager {
       await storage.set('blacklist_settings', settings);
       
       // Update cache
-      try {
-        const pattern = new RegExp(site, 'i');
-        this.customPatterns.push(pattern);
-        this.cache?.add(pattern);
-      } catch (e) {
-        const pattern = new RegExp(site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-        this.customPatterns.push(pattern);
-        this.cache?.add(pattern);
-      }
+      const pattern = safeSync(() => new RegExp(site, 'i'), 'Creating pattern for new site',
+        new RegExp(site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      );
+      this.customPatterns.push(pattern);
+      this.cache?.add(pattern);
     }
   }
 

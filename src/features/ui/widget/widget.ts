@@ -37,6 +37,7 @@
 import type { UserSettings, LanguageCode, MessageRequest, MessageResponse } from '../../../shared/types';
 import { logger } from '../../../shared/logger';
 import { ComponentAsyncManager } from '../../../shared/async';
+import { safe, safeSync } from '../../../shared/utils/helpers';
 
 interface PageControlSettings extends Partial<UserSettings> {
   targetLanguage: LanguageCode;
@@ -328,7 +329,7 @@ export class PageControl {
   }
 
   private async changeLanguage(language: LanguageCode): Promise<void> {
-    try {
+    await safe(async () => {
       // Update local state
       this.settings.targetLanguage = language;
       
@@ -350,13 +351,11 @@ export class PageControl {
       // Close menu and reload page
       this.closeMenu();
       window.location.reload();
-    } catch (error) {
-      logger.error('Error changing language:', error);
-    }
+    }, 'Error changing language');
   }
 
   private async handleAction(action: string): Promise<void> {
-    try {
+    await safe(async () => {
       switch (action) {
         case 'pause-everywhere':
           await this.pauseEverywhere();
@@ -372,9 +371,7 @@ export class PageControl {
       }
       
       this.closeMenu();
-    } catch (error) {
-      logger.error('Error handling action:', error);
-    }
+    }, 'Error handling action');
   }
 
   private async pauseEverywhere(): Promise<void> {
@@ -436,7 +433,7 @@ export class PageControl {
   }
 
   private async checkPauseState(): Promise<void> {
-    try {
+    await safe(async () => {
       const message: MessageRequest = { type: 'GET_SETTINGS' };
       const response = await chrome.runtime.sendMessage(message) as MessageResponse & {
         settings?: UserSettings;
@@ -452,9 +449,7 @@ export class PageControl {
       } else {
         this.showActiveState();
       }
-    } catch (error) {
-      logger.error('Error checking pause state:', error);
-    }
+    }, 'Error checking pause state');
   }
 
   private showPausedState(): void {
@@ -583,17 +578,16 @@ export class PageControl {
   }
 
   private savePosition(): void {
-    try {
-      chrome.storage.local.set({
+    safeSync(
+      () => chrome.storage.local.set({
         'fluent_control_position': this.position
-      });
-    } catch (error) {
-      logger.error('Failed to save position:', error);
-    }
+      }),
+      'Failed to save position'
+    );
   }
 
   private async loadPosition(): Promise<void> {
-    try {
+    await safe(async () => {
       const result = await chrome.storage.local.get('fluent_control_position');
       if (result.fluent_control_position) {
         this.position = result.fluent_control_position;
@@ -610,10 +604,12 @@ export class PageControl {
         // Default to bottom-right
         this.updatePosition();
       }
-    } catch (error) {
-      logger.error('Failed to load position:', error);
+    }, 
+    'Failed to load position'
+    ).catch(() => {
+      // On error, use default position
       this.updatePosition();
-    }
+    });
   }
 
   public updatePosition(): void {

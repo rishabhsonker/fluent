@@ -38,6 +38,7 @@ import { logger } from '../../../shared/logger';
 import { TIMING } from '../../../shared/constants';
 import { ComponentAsyncManager } from '../../../shared/async';
 import { throttle } from '../../../shared/performance';
+import { safe } from '../../../shared/utils/helpers';
 import type { LanguageCode, WordProgress, ContextExplanation, MessageResponse } from '../../../shared/types';
 
 interface LanguageInfo {
@@ -319,15 +320,14 @@ export class Tooltip {
         
         // Track interaction for spaced repetition
         if (this.storage && this.currentLanguage) {
-          try {
-            await this.storage.recordWordInteraction(
+          await safe(
+            () => this.storage!.recordWordInteraction(
               original.toLowerCase(),
-              this.currentLanguage,
+              this.currentLanguage!,
               'hover'
-            );
-          } catch (error) {
-            logger.error('Failed to record interaction:', error);
-          }
+            ),
+            'Failed to record interaction'
+          );
         }
         
         // Check if operation was cancelled
@@ -486,9 +486,9 @@ export class Tooltip {
     
     // Update progress if storage is available
     if (this.storage && this.currentLanguage) {
-      try {
-        const wordData = await this.storage.getWordProgress(original.toLowerCase(), this.currentLanguage);
-        if (wordData && wordData.mastery !== undefined) {
+      await safe(async () => {
+        const wordData = await this.storage!.getWordProgress(original.toLowerCase(), this.currentLanguage!);
+        if (wordData && wordData.mastery !== undefined && this.element) {
           const progressFill = this.element.querySelector('.fluent-tooltip-progress-fill') as HTMLDivElement;
           const progressText = this.element.querySelector('.fluent-tooltip-progress-text') as HTMLSpanElement;
           const progressContainer = this.element.querySelector('.fluent-tooltip-progress') as HTMLDivElement;
@@ -518,19 +518,21 @@ export class Tooltip {
           }
         } else {
           // Hide progress for new words
-          const progressContainer = this.element.querySelector('.fluent-tooltip-progress') as HTMLDivElement;
+          const progressContainer = this.element?.querySelector('.fluent-tooltip-progress') as HTMLDivElement;
           if (progressContainer) {
             progressContainer.classList.remove('fluent-visible');
             progressContainer.classList.add('fluent-hidden');
           }
         }
-      } catch (error) {
-        logger.error('Failed to get word progress:', error);
-        const progressContainer = this.element.querySelector('.fluent-tooltip-progress') as HTMLDivElement;
+      }, 
+      'Failed to get word progress'
+      ).catch(() => {
+        // On error, hide progress container
+        const progressContainer = this.element?.querySelector('.fluent-tooltip-progress') as HTMLDivElement;
         if (progressContainer) {
           progressContainer.style.display = 'none';
         }
-      }
+      });
     }
   }
 
@@ -836,15 +838,14 @@ export class Tooltip {
 
     // Track pronunciation interaction
     if (this.storage && this.currentLanguage) {
-      try {
-        await this.storage.recordWordInteraction(
+      await safe(
+        () => this.storage!.recordWordInteraction(
           original.toLowerCase(),
-          this.currentLanguage,
+          this.currentLanguage!,
           'pronunciation'
-        );
-      } catch (error) {
-        logger.error('Failed to record interaction:', error);
-      }
+        ),
+        'Failed to record interaction'
+      );
     }
 
     // For now, use the Web Speech API as a fallback

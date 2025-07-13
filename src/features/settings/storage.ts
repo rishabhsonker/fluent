@@ -3,6 +3,8 @@
 
 import { STORAGE_KEYS, DEFAULT_SETTINGS, RATE_LIMITS } from '../../shared/constants';
 import { logger } from '../../shared/logger';
+import { safe, safeSync, chromeCall } from '../../shared/utils/helpers';
+import { getErrorHandler } from '../../shared/utils/error-handler';
 import type {
   UserSettings,
   SiteSettings,
@@ -42,10 +44,37 @@ interface DailyUsage {
 class StorageManager {
   private cache: Map<string, any>;
   private listeners: Map<string, Set<StorageListener<any>>>;
+  private pendingWrites: Map<string, any>;
+  private writeTimer: NodeJS.Timeout | null;
+  private retryTimer: NodeJS.Timeout | null;
+  private failedWrites: Map<string, { value: any; retries: number; lastAttempt: number }>;
+  private readonly BATCH_DELAY = 100; // ms
+  private readonly MAX_RETRIES = 3;
+  private readonly RETRY_DELAYS = [1000, 2000, 4000]; // Exponential backoff
 
   constructor() {
     this.cache = new Map();
     this.listeners = new Map();
+    this.pendingWrites = new Map();
+    this.failedWrites = new Map();
+    this.writeTimer = null;
+    this.retryTimer = null;
+  }
+
+  // Cleanup method to prevent memory leaks
+  destroy(): void {
+    // Flush any pending writes
+    if (this.writeTimer) {
+      clearTimeout(this.writeTimer);
+      this.flushWrites().catch(() => {});
+    }
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+    }
+    this.cache.clear();
+    this.listeners.clear();
+    this.pendingWrites.clear();
+    this.failedWrites.clear();
   }
 
   // Determine which storage area to use based on key
@@ -60,112 +89,346 @@ class StorageManager {
 
   // Get data from storage with fallback
   async get<T = any>(key: string, defaultValue: T | null = null): Promise<T | null> {
-    try {
-      // Check cache first
-      if (this.cache.has(key)) {
-        return this.cache.get(key);
-      }
+    return safe(
+      async () => {
+        // Check cache first
+        if (this.cache.has(key)) {
+          return this.cache.get(key);
+        }
 
-      // Determine which storage area to use based on key
-      const storageArea = this.getStorageArea(key);
-      const result = await storageArea.get(key);
-      const value = result[key] ?? defaultValue;
-      
-      // Update cache
-      this.cache.set(key, value);
-      
-      return value;
-    } catch (error) {
-      logger.error('Storage get error:', error);
-      return defaultValue;
+        // Determine which storage area to use based on key
+        const storageArea = this.getStorageArea(key);
+        const result = await storageArea.get(key);
+        const value = result[key] ?? defaultValue;
+        
+        // Update cache
+        this.cache.set(key, value);
+        
+        return value;
+      },
+      `storage.get.${key}`,
+      defaultValue
+    );
+  }
+
+  // Set data in storage with batching
+  async set<T = any>(key: string, value: T): Promise<boolean> {
+    // Update cache immediately
+    this.cache.set(key, value);
+    
+    // Remove from failed writes if it exists (new write supersedes failed one)
+    this.failedWrites.delete(key);
+    
+    // Add to pending writes
+    this.pendingWrites.set(key, value);
+    
+    // Batch writes
+    if (!this.writeTimer) {
+      this.writeTimer = setTimeout(() => this.flushWrites(), this.BATCH_DELAY);
+    }
+    
+    // Notify listeners immediately
+    this.notifyListeners(key, value);
+    
+    return true;
+  }
+
+  // Force flush all pending writes (useful before critical operations)
+  async forceFlush(): Promise<void> {
+    if (this.writeTimer) {
+      clearTimeout(this.writeTimer);
+      this.writeTimer = null;
+    }
+    
+    // Flush pending writes
+    if (this.pendingWrites.size > 0) {
+      await this.flushWrites();
+    }
+    
+    // Also retry any failed writes immediately
+    if (this.failedWrites.size > 0) {
+      if (this.retryTimer) {
+        clearTimeout(this.retryTimer);
+        this.retryTimer = null;
+      }
+      await this.retryFailedWrites();
     }
   }
 
-  // Set data in storage
-  async set<T = any>(key: string, value: T): Promise<boolean> {
-    try {
-      // Update cache immediately
-      this.cache.set(key, value);
-      
-      // Determine which storage area to use based on key
-      const storageArea = this.getStorageArea(key);
-      await storageArea.set({ [key]: value });
-      
-      // Notify listeners
-      this.notifyListeners(key, value);
-      
-      return true;
-    } catch (error) {
-      logger.error('Storage set error:', error);
-      // Rollback cache on error
-      this.cache.delete(key);
-      return false;
+  // Flush all pending writes to storage
+  private async flushWrites(): Promise<void> {
+    if (this.pendingWrites.size === 0) {
+      this.writeTimer = null;
+      return;
     }
+    
+    await safe(
+      async () => {
+        // Group by storage area
+        const syncWrites: Record<string, any> = {};
+        const localWrites: Record<string, any> = {};
+        
+        for (const [key, value] of this.pendingWrites) {
+          if (key === STORAGE_KEYS.USER_SETTINGS || key === STORAGE_KEYS.SITE_SETTINGS) {
+            syncWrites[key] = value;
+          } else {
+            localWrites[key] = value;
+          }
+        }
+        
+        // Execute batch writes
+        const promises: Promise<void>[] = [];
+        if (Object.keys(syncWrites).length > 0) {
+          promises.push(chromeCall(
+            () => chrome.storage.sync.set(syncWrites),
+            'storage.sync.setBatch'
+          ));
+        }
+        if (Object.keys(localWrites).length > 0) {
+          promises.push(chromeCall(
+            () => chrome.storage.local.set(localWrites),
+            'storage.local.setBatch'
+          ));
+        }
+        
+        await Promise.all(promises);
+        
+        // Clear pending writes on success
+        this.pendingWrites.clear();
+      },
+      `storage.flushWrites[${this.pendingWrites.size}]`
+    ).catch((error) => {
+      // CRITICAL FIX: Don't delete from cache on failure!
+      // Instead, move to failed writes queue for retry
+      logger.error('[Storage] Write failed, queuing for retry', error);
+      
+      for (const [key, value] of this.pendingWrites) {
+        this.failedWrites.set(key, {
+          value,
+          retries: 0,
+          lastAttempt: Date.now()
+        });
+      }
+      this.pendingWrites.clear();
+      
+      // Schedule retry
+      this.scheduleRetry();
+    });
+    
+    this.writeTimer = null;
+  }
+
+  // Schedule retry for failed writes
+  private scheduleRetry(): void {
+    if (this.retryTimer || this.failedWrites.size === 0) {
+      return;
+    }
+    
+    // Find the next retry time based on exponential backoff
+    let nextRetryTime = Infinity;
+    const now = Date.now();
+    
+    for (const [key, failure] of this.failedWrites) {
+      const retryDelay = this.RETRY_DELAYS[Math.min(failure.retries, this.RETRY_DELAYS.length - 1)];
+      const nextAttempt = failure.lastAttempt + retryDelay;
+      nextRetryTime = Math.min(nextRetryTime, nextAttempt);
+    }
+    
+    const delay = Math.max(0, nextRetryTime - now);
+    this.retryTimer = setTimeout(() => this.retryFailedWrites(), delay);
+  }
+
+  // Retry failed writes with exponential backoff
+  private async retryFailedWrites(): Promise<void> {
+    this.retryTimer = null;
+    
+    if (this.failedWrites.size === 0) {
+      return;
+    }
+    
+    const toRetry = new Map<string, any>();
+    const retryInfo = new Map<string, { retries: number }>();
+    
+    // Collect writes that are ready to retry
+    const now = Date.now();
+    for (const [key, failure] of this.failedWrites) {
+      const retryDelay = this.RETRY_DELAYS[Math.min(failure.retries, this.RETRY_DELAYS.length - 1)];
+      if (now >= failure.lastAttempt + retryDelay) {
+        toRetry.set(key, failure.value);
+        retryInfo.set(key, { retries: failure.retries });
+      }
+    }
+    
+    if (toRetry.size === 0) {
+      this.scheduleRetry();
+      return;
+    }
+    
+    // Remove from failed queue before retry
+    for (const key of toRetry.keys()) {
+      this.failedWrites.delete(key);
+    }
+    
+    await safe(
+      async () => {
+        // Group by storage area
+        const syncWrites: Record<string, any> = {};
+        const localWrites: Record<string, any> = {};
+        
+        for (const [key, value] of toRetry) {
+          if (key === STORAGE_KEYS.USER_SETTINGS || key === STORAGE_KEYS.SITE_SETTINGS) {
+            syncWrites[key] = value;
+          } else {
+            localWrites[key] = value;
+          }
+        }
+        
+        // Execute batch writes
+        const promises: Promise<void>[] = [];
+        if (Object.keys(syncWrites).length > 0) {
+          promises.push(chromeCall(
+            () => chrome.storage.sync.set(syncWrites),
+            'storage.sync.retryBatch'
+          ));
+        }
+        if (Object.keys(localWrites).length > 0) {
+          promises.push(chromeCall(
+            () => chrome.storage.local.set(localWrites),
+            'storage.local.retryBatch'
+          ));
+        }
+        
+        await Promise.all(promises);
+        logger.info('[Storage] Successfully retried writes', { count: toRetry.size });
+      },
+      `storage.retryWrites[${toRetry.size}]`
+    ).catch((error) => {
+      logger.error('[Storage] Retry failed', error);
+      
+      // Put back in failed queue with incremented retry count
+      for (const [key, value] of toRetry) {
+        const info = retryInfo.get(key);
+        const originalRetries = info ? info.retries : 0;
+        const newRetries = originalRetries + 1;
+        
+        if (newRetries >= this.MAX_RETRIES) {
+          // Max retries reached, notify user
+          logger.error('[Storage] Max retries reached for key', { key, retries: newRetries });
+          this.notifyWriteFailure(key, value);
+          
+          // Save to localStorage as last resort backup
+          safeSync(() => {
+            const backup = JSON.parse(localStorage.getItem('fluent_failed_writes') || '{}');
+            backup[key] = { value, timestamp: Date.now() };
+            localStorage.setItem('fluent_failed_writes', JSON.stringify(backup));
+          }, '[Storage] Failed to backup to localStorage');
+        } else {
+          // Queue for another retry
+          this.failedWrites.set(key, {
+            value,
+            retries: newRetries,
+            lastAttempt: Date.now()
+          });
+        }
+      }
+      
+      // Schedule next retry
+      this.scheduleRetry();
+    });
+    
+    // Schedule next retry if there are more failed writes
+    if (this.failedWrites.size > 0) {
+      this.scheduleRetry();
+    }
+  }
+
+  // Notify user of persistent write failure
+  private notifyWriteFailure(key: string, value: any): void {
+    // Send message to popup/content scripts about sync failure
+    chrome.runtime.sendMessage({
+      type: 'STORAGE_SYNC_FAILED',
+      key,
+      message: 'Failed to sync settings. Your changes are saved locally but may not sync across devices.'
+    }).catch(() => {
+      // Ignore if no listeners
+    });
   }
 
   // Get multiple keys at once
   async getMultiple<T = any>(keys: string[]): Promise<Record<string, T>> {
-    try {
-      // Group keys by storage area
-      const syncKeys = keys.filter(key => 
-        key === STORAGE_KEYS.USER_SETTINGS || key === STORAGE_KEYS.SITE_SETTINGS
-      );
-      const localKeys = keys.filter(key => 
-        key !== STORAGE_KEYS.USER_SETTINGS && key !== STORAGE_KEYS.SITE_SETTINGS
-      );
-      
-      // Get from both storage areas
-      const promises: Promise<any>[] = [];
-      if (syncKeys.length > 0) {
-        promises.push(chrome.storage.sync.get(syncKeys));
-      }
-      if (localKeys.length > 0) {
-        promises.push(chrome.storage.local.get(localKeys));
-      }
-      
-      const results = await Promise.all(promises);
-      const combined = Object.assign({}, ...results);
-      
-      // Update cache
-      for (const [key, value] of Object.entries(combined)) {
-        this.cache.set(key, value);
-      }
-      
-      return combined;
-    } catch (error) {
-      logger.error('Storage getMultiple error:', error);
-      return {};
-    }
+    return safe(
+      async () => {
+        // Group keys by storage area
+        const syncKeys = keys.filter(key => 
+          key === STORAGE_KEYS.USER_SETTINGS || key === STORAGE_KEYS.SITE_SETTINGS
+        );
+        const localKeys = keys.filter(key => 
+          key !== STORAGE_KEYS.USER_SETTINGS && key !== STORAGE_KEYS.SITE_SETTINGS
+        );
+        
+        // Get from both storage areas
+        const promises: Promise<any>[] = [];
+        if (syncKeys.length > 0) {
+          promises.push(chromeCall(
+            () => chrome.storage.sync.get(syncKeys),
+            'storage.sync.getMultiple'
+          ));
+        }
+        if (localKeys.length > 0) {
+          promises.push(chromeCall(
+            () => chrome.storage.local.get(localKeys),
+            'storage.local.getMultiple'
+          ));
+        }
+        
+        const results = await Promise.all(promises);
+        const combined = Object.assign({}, ...results);
+        
+        // Update cache
+        for (const [key, value] of Object.entries(combined)) {
+          this.cache.set(key, value);
+        }
+        
+        return combined;
+      },
+      `storage.getMultiple[${keys.length}]`,
+      {}
+    );
   }
 
   // Remove data from storage
   async remove(key: string): Promise<boolean> {
-    try {
-      this.cache.delete(key);
-      const storageArea = this.getStorageArea(key);
-      await storageArea.remove(key);
-      this.notifyListeners(key, undefined);
-      return true;
-    } catch (error) {
-      logger.error('Storage remove error:', error);
-      return false;
-    }
+    return safe(
+      async () => {
+        this.cache.delete(key);
+        const storageArea = this.getStorageArea(key);
+        await chromeCall(
+          () => storageArea.remove(key),
+          `storage.remove.${key}`
+        );
+        this.notifyListeners(key, undefined);
+        return true;
+      },
+      `storage.remove.${key}`,
+      false
+    );
   }
 
   // Clear all storage
   async clear(): Promise<boolean> {
-    try {
-      this.cache.clear();
-      // Clear both storage areas
-      await Promise.all([
-        chrome.storage.local.clear(),
-        chrome.storage.sync.clear()
-      ]);
-      return true;
-    } catch (error) {
-      logger.error('Storage clear error:', error);
-      return false;
-    }
+    return safe(
+      async () => {
+        this.cache.clear();
+        // Clear both storage areas
+        await Promise.all([
+          chromeCall(() => chrome.storage.local.clear(), 'storage.local.clear'),
+          chromeCall(() => chrome.storage.sync.clear(), 'storage.sync.clear')
+        ]);
+        return true;
+      },
+      'storage.clear',
+      false
+    );
   }
 
   // Listen for changes
@@ -187,42 +450,43 @@ class StorageManager {
   // Notify listeners of changes
   private notifyListeners<T = any>(key: string, value: T): void {
     const callbacks = this.listeners.get(key);
+    
     if (callbacks) {
       callbacks.forEach(callback => {
-        try {
-          callback(value);
-        } catch (error) {
-          logger.error('Storage listener error:', error);
-        }
+        safeSync(
+          () => callback(value),
+          `storage.notifyListener.${key}`
+        );
       });
     }
   }
 
   // Get storage usage
   async getUsage(): Promise<StorageUsage> {
-    try {
-      // Get usage from both storage areas
-      const [localBytes, syncBytes] = await Promise.all([
-        chrome.storage.local.getBytesInUse(),
-        chrome.storage.sync.getBytesInUse()
-      ]);
-      
-      // Get quotas
-      const localQuota = chrome.storage.local.QUOTA_BYTES || 10485760; // 10MB default
-      const syncQuota = chrome.storage.sync.QUOTA_BYTES || 102400; // 100KB default
-      
-      const totalUsed = localBytes + syncBytes;
-      const totalQuota = localQuota + syncQuota;
-      
-      return {
-        used: totalUsed,
-        total: totalQuota,
-        percentage: (totalUsed / totalQuota) * 100
-      };
-    } catch (error) {
-      logger.error('Storage usage error:', error);
-      return { used: 0, total: 0, percentage: 0 };
-    }
+    return safe(
+      async () => {
+        // Get usage from both storage areas
+        const [localBytes, syncBytes] = await Promise.all([
+          chromeCall(() => chrome.storage.local.getBytesInUse(), 'storage.local.getBytesInUse'),
+          chromeCall(() => chrome.storage.sync.getBytesInUse(), 'storage.sync.getBytesInUse')
+        ]);
+        
+        // Get quotas
+        const localQuota = chrome.storage.local.QUOTA_BYTES || 10485760; // 10MB default
+        const syncQuota = chrome.storage.sync.QUOTA_BYTES || 102400; // 100KB default
+        
+        const totalUsed = localBytes + syncBytes;
+        const totalQuota = localQuota + syncQuota;
+        
+        return {
+          used: totalUsed,
+          total: totalQuota,
+          percentage: (totalUsed / totalQuota) * 100
+        };
+      },
+      'storage.getUsage',
+      { used: 0, total: 0, percentage: 0 }
+    );
   }
 }
 
@@ -446,41 +710,42 @@ export class FluentStorage {
 
   // Auto-cleanup old data
   async cleanup(): Promise<boolean> {
-    try {
-      // Clean up old word progress (not reviewed in 90 days)
-      const progress = await this.storage.get<Record<string, WordProgress>>(STORAGE_KEYS.WORD_PROGRESS, {}) || {};
-      const cutoff = Date.now() - (90 * 24 * 60 * 60 * 1000);
-      
-      if (progress) {
-        for (const [key, data] of Object.entries(progress)) {
-          if (data.lastSeen && data.lastSeen < cutoff) {
-            delete progress[key];
+    return safe(
+      async () => {
+        // Clean up old word progress (not reviewed in 90 days)
+        const progress = await this.storage.get<Record<string, WordProgress>>(STORAGE_KEYS.WORD_PROGRESS, {}) || {};
+        const cutoff = Date.now() - (90 * 24 * 60 * 60 * 1000);
+        
+        if (progress) {
+          for (const [key, data] of Object.entries(progress)) {
+            if (data.lastSeen && data.lastSeen < cutoff) {
+              delete progress[key];
+            }
           }
         }
-      }
-      
-      await this.storage.set(STORAGE_KEYS.WORD_PROGRESS, progress);
-      
-      // Clean up old translations (not used in 30 days)
-      const cache = await this.storage.get<StorageCache>(STORAGE_KEYS.TRANSLATION_CACHE, { translations: {}, lastUpdated: Date.now() }) || { translations: {}, lastUpdated: Date.now() };
-      const cacheCutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
-      
-      if (cache.timestamps) {
-        for (const [key, timestamp] of Object.entries(cache.timestamps)) {
-          if (timestamp < cacheCutoff) {
-            delete cache.translations[key];
-            delete cache.timestamps[key];
+        
+        await this.storage.set(STORAGE_KEYS.WORD_PROGRESS, progress);
+        
+        // Clean up old translations (not used in 30 days)
+        const cache = await this.storage.get<StorageCache>(STORAGE_KEYS.TRANSLATION_CACHE, { translations: {}, lastUpdated: Date.now() }) || { translations: {}, lastUpdated: Date.now() };
+        const cacheCutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        
+        if (cache.timestamps) {
+          for (const [key, timestamp] of Object.entries(cache.timestamps)) {
+            if (timestamp < cacheCutoff) {
+              delete cache.translations[key];
+              delete cache.timestamps[key];
+            }
           }
         }
-      }
-      
-      await this.storage.set(STORAGE_KEYS.TRANSLATION_CACHE, cache);
-      
-      return true;
-    } catch (error) {
-      logger.error('Storage cleanup error:', error);
-      return false;
-    }
+        
+        await this.storage.set(STORAGE_KEYS.TRANSLATION_CACHE, cache);
+        
+        return true;
+      },
+      'storage.cleanup',
+      false
+    );
   }
 
   // Listen for changes

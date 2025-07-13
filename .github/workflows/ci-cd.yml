@@ -138,6 +138,7 @@ jobs:
         npm run build
       env:
         NODE_ENV: production
+        SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
     
     - name: validate
       run: |

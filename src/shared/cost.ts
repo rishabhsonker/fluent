@@ -2,6 +2,7 @@
 'use strict';
 
 import { logger } from './logger';
+import { chromeCall, safe } from './utils/helpers';
 
 // Type definitions for cost tracking
 interface CostLimit {
@@ -147,7 +148,9 @@ export class CostGuard {
     
     if (violations.length > 0) {
       this.openCircuitBreaker();
-      throw new Error(`Cost limits exceeded: ${violations.join(', ')}`);
+      const error = new Error(`Cost limits exceeded: ${violations.join(', ')}`);
+      logger.error('Cost limits exceeded', { type, estimatedCharacters, violations });
+      throw error;
     }
     
     return { allowed: true, estimatedCost };
@@ -211,7 +214,9 @@ export class CostGuard {
   private openCircuitBreaker(): void {
     this.circuitOpen = true;
     this.circuitOpenUntil = Date.now() + 300000; // 5 minutes
-    logger.error('Circuit breaker opened due to high costs');
+    logger.warn('Circuit breaker opened due to high costs', { 
+      circuitOpenUntil: this.circuitOpenUntil 
+    });
   }
   
   // Get current usage stats
@@ -247,23 +252,22 @@ export class CostGuard {
   
   // Persist state
   private async saveState(): Promise<void> {
-    try {
-      await chrome.storage.local.set({
+    await chromeCall(
+      () => chrome.storage.local.set({
         costGuardState: {
           usage: this.usage,
           circuitOpen: this.circuitOpen,
           circuitOpenUntil: this.circuitOpenUntil,
           lastSaved: Date.now()
         } as CostGuardState
-      });
-    } catch (error) {
-      logger.error('Failed to save cost guard state:', error);
-    }
+      }),
+      'CostGuard.saveState'
+    );
   }
   
   // Load persisted state
   private async loadState(): Promise<void> {
-    try {
+    await safe(async () => {
       const result = await chrome.storage.local.get('costGuardState');
       if (result.costGuardState) {
         const state = result.costGuardState as CostGuardState;
@@ -275,16 +279,16 @@ export class CostGuard {
           this.circuitOpenUntil = state.circuitOpenUntil;
         }
       }
-    } catch (error) {
-      logger.error('Failed to load cost guard state:', error);
-    }
+    }, 'CostGuard.loadState');
   }
   
   // Emergency stop - disable all API calls
   emergencyStop(): void {
     this.circuitOpen = true;
     this.circuitOpenUntil = Date.now() + 86400000; // 24 hours
-    logger.error('Emergency stop activated - all API calls disabled for 24 hours');
+    logger.error('Emergency stop activated - all API calls disabled for 24 hours', {
+      circuitOpenUntil: this.circuitOpenUntil
+    });
     this.saveState();
   }
   

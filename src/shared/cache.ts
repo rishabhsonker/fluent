@@ -152,6 +152,20 @@ export class MemoryCache<T> {
     this.cache.clear();
     this.stats.size = 0;
   }
+
+  /**
+   * Destroy cache - cleanup for memory management
+   */
+  destroy(): void {
+    this.clear();
+    // Reset stats to prevent any lingering references
+    this.stats = {
+      hits: 0,
+      misses: 0,
+      evictions: 0,
+      size: 0
+    };
+  }
   
   /**
    * Get cache statistics

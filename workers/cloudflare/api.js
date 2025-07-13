@@ -5,6 +5,7 @@
 
 import { logInfo, logError } from './logger.js';
 import { validateTranslation, validateContext } from './validator.js';
+import { safe } from './utils.js';
 
 /**
  * Call Microsoft Translator API
@@ -105,7 +106,7 @@ Response format:
   "gender": "..." or null
 }`;
 
-  try {
+  return await safe(async () => {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -136,7 +137,7 @@ Response format:
     
     // Now translate the English example to the target language
     if (context.englishExample && env.MICROSOFT_TRANSLATOR_KEY) {
-      try {
+      context.translatedExample = await safe(async () => {
         const translationResult = await callTranslatorAPI(
           [context.englishExample], 
           targetLanguage, 
@@ -144,18 +145,12 @@ Response format:
           env
         );
         
-        context.translatedExample = translationResult[context.englishExample] || '';
-      } catch (error) {
-        logError('Failed to translate example sentence', error);
-        context.translatedExample = '';
-      }
+        return translationResult[context.englishExample] || '';
+      }, 'Failed to translate example sentence', '');
     }
     
     return context;
-  } catch (error) {
-    logError('Failed to generate context', error);
-    return null;
-  }
+  }, 'Failed to generate context', null);
 }
 
 /**
@@ -210,7 +205,7 @@ Example format:
 
 Respond with valid JSON only, no markdown or additional text.`;
 
-  try {
+  await safe(async () => {
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -234,7 +229,7 @@ Respond with valid JSON only, no markdown or additional text.`;
     if (!claudeResponse.ok) {
       const errorText = await claudeResponse.text();
       logError('Claude API error', new Error(`API returned ${claudeResponse.status}: ${errorText}`));
-      return contexts;
+      return;
     }
 
     const claudeData = await claudeResponse.json();
@@ -243,7 +238,7 @@ Respond with valid JSON only, no markdown or additional text.`;
       contentLength: claudeData.content?.[0]?.text?.length
     });
     
-    try {
+    await safe(async () => {
       const content = claudeData.content[0].text;
       const contextData = JSON.parse(content);
       
@@ -293,12 +288,8 @@ Respond with valid JSON only, no markdown or additional text.`;
       logInfo('Successfully parsed context data', {
         contextCount: Object.keys(contextData).length
       });
-    } catch (error) {
-      logError('Failed to parse Claude response', error);
-    }
-  } catch (error) {
-    logError('Context generation error', error);
-  }
+    }, 'Failed to parse Claude response');
+  }, 'Context generation error');
   
   logInfo('Returning contexts', {
     contextCount: Object.keys(contexts).length

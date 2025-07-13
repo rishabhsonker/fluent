@@ -3,10 +3,6 @@ main = "translator.js"
 compatibility_date = "2025-01-01"
 
 # Production environment (default)
-kv_namespaces = [
-  { binding = "TRANSLATION_CACHE", id = "90eca25c86964d90b4421803ce41094c" }
-]
-
 [vars]
 ENVIRONMENT = "production"
 AZURE_REGION = "eastus"
@@ -43,15 +39,18 @@ type = "ratelimit"
 namespace_id = "1004"
 simple = { limit = 500, period = 86400 }
 
+# D1 Database binding for production
+[[d1_databases]]
+binding = "DB"
+database_name = "translator"
+database_id = "f1a6d16b-cc72-48a0-bc33-8ec71f75b75c"
+
 [limits]
 cpu_ms = 50
 
 # Development environment
 [env.development]
 name = "translator-dev"
-kv_namespaces = [
-  { binding = "TRANSLATION_CACHE", id = "d5bd562d385b4dde947f290af8fe553b" }
-]
 
 [env.development.vars]
 ENVIRONMENT = "development"
@@ -81,6 +80,12 @@ name = "DAILY_AI_LIMITER"
 type = "ratelimit"
 namespace_id = "2004"
 simple = { limit = 5000, period = 86400 }
+
+# D1 Database binding for development
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "translator-dev"
+database_id = "53323f1e-ce8a-4ba3-8732-5b62b088cdf2"
 
 [env.development.limits]
 cpu_ms = 100  # More generous for dev

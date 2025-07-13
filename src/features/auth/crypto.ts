@@ -5,6 +5,7 @@
 
 import { logger } from '../../shared/logger';
 import { SECURITY } from '../../shared/constants';
+import { safe, chromeCall } from '../../shared/utils/helpers';
 
 interface EncryptedData {
   ciphertext: string;
@@ -50,70 +51,74 @@ export class SecureCrypto {
    * Encrypt sensitive data
    */
   async encrypt(data: string): Promise<EncryptedData> {
-    try {
-      const encoder = new TextEncoder();
-      const dataBuffer = encoder.encode(data);
-      
-      // Generate random salt and IV
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      
-      // Derive key
-      const key = await this.deriveKey(salt);
-      
-      // Encrypt
-      const encryptedBuffer = await crypto.subtle.encrypt(
-        {
-          name: 'AES-GCM',
-          iv: iv
-        },
-        key,
-        dataBuffer
-      );
-      
-      // Convert to base64 for storage
-      return {
-        ciphertext: btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer))),
-        iv: btoa(String.fromCharCode(...iv)),
-        salt: btoa(String.fromCharCode(...salt)),
-        timestamp: Date.now()
-      };
-    } catch (error) {
-      logger.error('Encryption failed:', error);
+    return safe(
+      async () => {
+        const encoder = new TextEncoder();
+        const dataBuffer = encoder.encode(data);
+        
+        // Generate random salt and IV
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        
+        // Derive key
+        const key = await this.deriveKey(salt);
+        
+        // Encrypt
+        const encryptedBuffer = await crypto.subtle.encrypt(
+          {
+            name: 'AES-GCM',
+            iv: iv
+          },
+          key,
+          dataBuffer
+        );
+        
+        // Convert to base64 for storage
+        return {
+          ciphertext: btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer))),
+          iv: btoa(String.fromCharCode(...iv)),
+          salt: btoa(String.fromCharCode(...salt)),
+          timestamp: Date.now()
+        };
+      },
+      'crypto.encrypt'
+    ).catch(error => {
       throw new Error('Failed to encrypt data');
-    }
+    });
   }
   
   /**
    * Decrypt data
    */
   async decrypt(encryptedData: EncryptedData): Promise<string> {
-    try {
-      // Convert from base64
-      const ciphertext = Uint8Array.from(atob(encryptedData.ciphertext), c => c.charCodeAt(0));
-      const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
-      const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
-      
-      // Derive key
-      const key = await this.deriveKey(salt);
-      
-      // Decrypt
-      const decryptedBuffer = await crypto.subtle.decrypt(
-        {
-          name: 'AES-GCM',
-          iv: iv
-        },
-        key,
-        ciphertext
-      );
-      
-      // Convert back to string
-      const decoder = new TextDecoder();
-      return decoder.decode(decryptedBuffer);
-    } catch (error) {
-      logger.error('Decryption failed:', error);
+    return safe(
+      async () => {
+        // Convert from base64
+        const ciphertext = Uint8Array.from(atob(encryptedData.ciphertext), c => c.charCodeAt(0));
+        const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
+        const salt = Uint8Array.from(atob(encryptedData.salt), c => c.charCodeAt(0));
+        
+        // Derive key
+        const key = await this.deriveKey(salt);
+        
+        // Decrypt
+        const decryptedBuffer = await crypto.subtle.decrypt(
+          {
+            name: 'AES-GCM',
+            iv: iv
+          },
+          key,
+          ciphertext
+        );
+        
+        // Convert back to string
+        const decoder = new TextDecoder();
+        return decoder.decode(decryptedBuffer);
+      },
+      'crypto.decrypt'
+    ).catch(error => {
       throw new Error('Failed to decrypt data');
-    }
+    });
   }
   
   /**
@@ -121,65 +126,79 @@ export class SecureCrypto {
    */
   async storeApiKey(apiKey: string | null | undefined): Promise<void> {
     if (!apiKey) {
-      await chrome.storage.local.remove(this.STORAGE_KEY);
+      await chromeCall(
+        () => chrome.storage.local.remove(this.STORAGE_KEY),
+        'crypto.removeApiKey'
+      );
       logger.info('API key removed');
       return;
     }
     
-    try {
-      // Validate API key format
-      if (apiKey.length < 10 || apiKey.length > 200) {
-        throw new Error('Invalid API key format');
-      }
-      
-      // Encrypt the API key
-      const encryptedData = await this.encrypt(apiKey);
-      
-      // Store in local storage (not sync)
-      await chrome.storage.local.set({
-        [this.STORAGE_KEY]: encryptedData
-      });
-      
-      logger.info('API key stored securely');
-    } catch (error) {
-      logger.error('Failed to store API key:', error);
-      throw error;
-    }
+    await safe(
+      async () => {
+        // Validate API key format
+        if (apiKey.length < 10 || apiKey.length > 200) {
+          throw new Error('Invalid API key format');
+        }
+        
+        // Encrypt the API key
+        const encryptedData = await this.encrypt(apiKey);
+        
+        // Store in local storage (not sync)
+        await chromeCall(
+          () => chrome.storage.local.set({
+            [this.STORAGE_KEY]: encryptedData
+          }),
+          'crypto.storeApiKey'
+        );
+        
+        logger.info('API key stored securely');
+      },
+      'crypto.storeApiKey'
+    );
   }
   
   /**
    * Retrieve and decrypt API key
    */
   async getApiKey(): Promise<string | null> {
-    try {
-      const result = await chrome.storage.local.get(this.STORAGE_KEY);
-      const encryptedData = result[this.STORAGE_KEY] as EncryptedData;
-      
-      if (!encryptedData) {
-        return null;
-      }
-      
-      // Check if data is too old (optional expiry)
-      const maxAge = 90 * 24 * 60 * 60 * 1000; // 90 days
-      if (Date.now() - encryptedData.timestamp > maxAge) {
-        logger.warn('API key has expired');
-        await this.clearApiKey();
-        return null;
-      }
-      
-      // Decrypt
-      return await this.decrypt(encryptedData);
-    } catch (error) {
-      logger.error('Failed to retrieve API key:', error);
-      return null;
-    }
+    return safe(
+      async () => {
+        const result = await chromeCall(
+          () => chrome.storage.local.get(this.STORAGE_KEY),
+          'crypto.getApiKey',
+          {}
+        );
+        const encryptedData = result[this.STORAGE_KEY] as EncryptedData;
+        
+        if (!encryptedData) {
+          return null;
+        }
+        
+        // Check if data is too old (optional expiry)
+        const maxAge = 90 * 24 * 60 * 60 * 1000; // 90 days
+        if (Date.now() - encryptedData.timestamp > maxAge) {
+          logger.warn('API key has expired');
+          await this.clearApiKey();
+          return null;
+        }
+        
+        // Decrypt
+        return await this.decrypt(encryptedData);
+      },
+      'crypto.getApiKey',
+      null
+    );
   }
   
   /**
    * Clear stored API key
    */
   async clearApiKey(): Promise<void> {
-    await chrome.storage.local.remove(this.STORAGE_KEY);
+    await chromeCall(
+      () => chrome.storage.local.remove(this.STORAGE_KEY),
+      'crypto.clearApiKey'
+    );
     logger.info('API key cleared');
   }
   
@@ -187,7 +206,11 @@ export class SecureCrypto {
    * Check if API key exists
    */
   async hasApiKey(): Promise<boolean> {
-    const result = await chrome.storage.local.get(this.STORAGE_KEY);
+    const result = await chromeCall(
+      () => chrome.storage.local.get(this.STORAGE_KEY),
+      'crypto.hasApiKey',
+      {}
+    );
     return !!result[this.STORAGE_KEY];
   }
   
@@ -195,24 +218,32 @@ export class SecureCrypto {
    * Migrate from old storage to new secure storage
    */
   async migrateFromOldStorage(): Promise<boolean> {
-    try {
-      // Check if there's an old API key in sync storage
-      const oldData = await chrome.storage.sync.get('userApiKey');
-      if (oldData.userApiKey) {
-        // Store using new secure method
-        await this.storeApiKey(oldData.userApiKey);
-        
-        // Remove from old storage
-        await chrome.storage.sync.remove(['userApiKey', 'keyStored']);
-        
-        logger.info('Successfully migrated API key to secure storage');
-        return true;
-      }
-      return false;
-    } catch (error) {
-      logger.error('Migration failed:', error);
-      return false;
-    }
+    return safe(
+      async () => {
+        // Check if there's an old API key in sync storage
+        const oldData = await chromeCall(
+          () => chrome.storage.sync.get('userApiKey'),
+          'crypto.getOldApiKey',
+          {}
+        );
+        if (oldData.userApiKey) {
+          // Store using new secure method
+          await this.storeApiKey(oldData.userApiKey);
+          
+          // Remove from old storage
+          await chromeCall(
+            () => chrome.storage.sync.remove(['userApiKey', 'keyStored']),
+            'crypto.removeOldApiKey'
+          );
+          
+          logger.info('Successfully migrated API key to secure storage');
+          return true;
+        }
+        return false;
+      },
+      'crypto.migrateFromOldStorage',
+      false
+    );
   }
 }
 

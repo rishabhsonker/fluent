@@ -4,6 +4,8 @@
  */
 
 import { logger } from './logger';
+import { getErrorHandler } from './utils/error-handler';
+import { safe } from './utils/helpers';
 
 export interface RetryOptions {
   maxRetries?: number;
@@ -135,18 +137,25 @@ export async function fetchWithRetry(
   }
   
   // All retries exhausted
-  logger.error('All network retries exhausted', {
-    url,
-    attempts: opts.maxRetries + 1,
-    lastError: lastError?.message
-  });
-  
-  throw new NetworkError(
+  const errorHandler = getErrorHandler();
+  const networkError = new NetworkError(
     `Network request failed after ${opts.maxRetries + 1} attempts: ${lastError?.message}`,
     undefined,
     undefined,
     opts.maxRetries
   );
+  
+  errorHandler.handleError(networkError, {
+    operation: 'network.fetchWithRetry',
+    component: 'network',
+    extra: {
+      url,
+      attempts: opts.maxRetries + 1,
+      lastError: lastError?.message
+    }
+  });
+  
+  throw networkError;
 }
 
 /**
@@ -214,11 +223,16 @@ export class RequestBatcher<T> {
       
       await Promise.all(
         batch.map(async ({ request, resolve, reject }) => {
-          try {
-            const result = await request();
+          const result = await safe(
+            request,
+            'Batch request execution',
+            undefined
+          );
+          if (result !== undefined) {
             resolve(result);
-          } catch (error) {
-            reject(error as Error);
+          } else {
+            // safe() threw an error, reject the promise
+            reject(new Error('Batch request failed'));
           }
         })
       );

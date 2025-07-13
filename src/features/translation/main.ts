@@ -36,6 +36,7 @@
 import { logger } from '../../shared/logger';
 import { ComponentAsyncManager } from '../../shared/async';
 import { rateLimiter } from '../../shared/throttle';
+import { safe, sendMessage } from '../../shared/utils/helpers';
 import type { UserSettings, LanguageCode } from '../../shared/types';
 import type { Tooltip } from '../ui/tooltip/tooltip';
 import type { PageControl } from '../ui/widget/widget';
@@ -43,6 +44,7 @@ import type { WordReplacer } from './replacer';
 import type { TextProcessor } from './processor';
 import { shouldProcessSite, getSiteConfig, shouldSkipElement, type SiteConfig, SITE_CONFIGS } from './config';
 import { showErrorNotification, showLimitNotification } from './notifications';
+import { ContentScriptErrorBoundary } from './boundary';
 
 
 declare global {
@@ -139,7 +141,25 @@ interface ContentConfig {
       return initializationPromise;
     }
     
-    initializationPromise = doProcessContent().finally(() => {
+    // Wrap with error boundary for crash protection
+    initializationPromise = ContentScriptErrorBoundary.wrap(
+      doProcessContent,
+      'processContent',
+      {
+        maxErrors: 3,
+        resetDelay: 60000,
+        onError: (error, context) => {
+          logger.error(`Error in ${context}:`, error);
+          // Additional error handling if needed
+        },
+        onDisable: () => {
+          logger.error('Content script disabled due to excessive errors');
+          cleanup();
+        }
+      }
+    ).then(() => {
+      // Success case - return void
+    }).finally(() => {
       // Only clear if we're not in the middle of cleanup
       if (!isCleaningUp) {
         initializationPromise = null;
@@ -160,13 +180,19 @@ interface ContentConfig {
     
     // Import text processor for batched processing
     if (!textProcessorInstance) {
-      try {
-        const { TextProcessor } = await import('./processor');
-        textProcessorInstance = new TextProcessor(CONFIG);
-      } catch (error) {
-        logger.error('Failed to load text processor', error);
-        return;
+      const processor = await safe(
+        async () => {
+          const { TextProcessor } = await import('./processor');
+          return new TextProcessor(CONFIG);
+        },
+        'main.loadTextProcessor',
+        null
+      );
+      
+      if (!processor) {
+        return; // Cannot continue without processor
       }
+      textProcessorInstance = processor;
     }
     
     // Collect text nodes using optimized processor
@@ -192,11 +218,12 @@ interface ContentConfig {
       logger.debug(`Processing ${textNodes.length} text nodes`);
       
       // Import and use word replacer with real translations
-      Promise.all([
+      const [replacerModule, storageModule] = await Promise.all([
         import('./replacer'),
         import('../settings/storage')
-      ]).then(async ([replacerModule, storageModule]) => {
-        try {
+      ]);
+      
+      await safe(async () => {
         const { WordReplacer } = replacerModule;
         const { getStorage } = storageModule;
         
@@ -227,13 +254,11 @@ interface ContentConfig {
         }
         
         // Analyze and select words (now async with spaced repetition)
-        let wordsToReplace;
-        try {
-          wordsToReplace = await replacerInstance.analyzeText(textNodes);
-        } catch (error) {
-          logger.error('Failed to analyze text', error);
-          return;
-        }
+        const wordsToReplace = await safe(
+          () => replacerInstance!.analyzeText(textNodes),
+          'main.analyzeText',
+          []
+        );
         logger.debug(`Selected ${wordsToReplace.length} words for replacement`);
         
         if (wordsToReplace.length === 0) {
@@ -241,37 +266,35 @@ interface ContentConfig {
         }
         
         // Get translations through background script to avoid CORS - with AsyncManager
-        let result;
-        try {
-          logger.info('Sending translation request for words:', wordsToReplace);
-          result = await asyncManager.execute(
-            'translate-words',
-            async (signal) => {
-              // Check if we can use AbortSignal with chrome.runtime.sendMessage
-              // Chrome doesn't support AbortSignal in sendMessage, so we'll handle cancellation differently
-              const messagePromise = chrome.runtime.sendMessage({
-                type: 'GET_TRANSLATIONS',
-                words: wordsToReplace,
-                language: targetLanguage
-              });
-              
-              // Create a race between the message and abort signal
-              return await Promise.race([
-                messagePromise,
-                new Promise((_, reject) => {
-                  signal.addEventListener('abort', () => reject(new Error('Translation cancelled')));
-                })
-              ]);
-            },
-            { description: 'Translate selected words', preventDuplicates: true }
-          );
-          logger.info('Translation response received:', result);
-        } catch (error) {
-          logger.error('Translation request failed:', error);
-          // Show visible error to user
-          showErrorNotification('Translation failed. Please check the extension settings.');
-          return;
-        }
+        let result = await safe(
+          async () => {
+            logger.info('Sending translation request for words:', wordsToReplace);
+            return await asyncManager.execute(
+              'translate-words',
+              async (signal) => {
+                // Check if we can use AbortSignal with chrome.runtime.sendMessage
+                // Chrome doesn't support AbortSignal in sendMessage, so we'll handle cancellation differently
+                const messagePromise = chrome.runtime.sendMessage({
+                  type: 'GET_TRANSLATIONS',
+                  words: wordsToReplace,
+                  language: targetLanguage
+                });
+                
+                // Create a race between the message and abort signal
+                return await Promise.race([
+                  messagePromise,
+                  new Promise((_, reject) => {
+                    signal.addEventListener('abort', () => reject(new Error('Translation cancelled')));
+                  })
+                ]);
+              },
+              { description: 'Translate selected words', preventDuplicates: true }
+            );
+          },
+          'main.translateWords',
+          { translations: {} }
+        );
+        logger.info('Translation response received:', result);
         
         // Check if response is wrapped in secure message
         let actualResult = result;
@@ -324,48 +347,36 @@ interface ContentConfig {
         }
         
         // Replace words with error handling
-        let replacedCount = 0;
-        try {
-          replacedCount = await replacerInstance.replaceWords(textNodes, wordsToReplace, translationMap, contextMap);
-        } catch (error) {
-          logger.error('Failed to replace words', error);
-          return;
-        }
+        const replacedCount = await safe(
+          () => replacerInstance!.replaceWords(textNodes, wordsToReplace, translationMap, contextMap),
+          'main.replaceWords',
+          0
+        );
         logger.debug(`Replaced ${replacedCount} words`);
         
         // Update daily stats with error handling
         if (replacedCount > 0) {
-          try {
-            const stats = await storage.getDailyStats();
-            await storage.updateDailyStats({
-              wordsLearned: stats.wordsLearned + replacedCount,
-              pagesVisited: stats.pagesVisited + 1
-            });
-          } catch (error) {
-            logger.error('Failed to update stats', error);
-            // Non-critical - continue
-          }
+          await safe(
+            async () => {
+              const stats = await storage.getDailyStats();
+              await storage.updateDailyStats({
+                wordsLearned: stats.wordsLearned + replacedCount,
+                pagesVisited: stats.pagesVisited + 1
+              });
+            },
+            'main.updateStats'
+          );
         }
         
         // Cleanup replacer after use
-        replacerInstance.cleanup();
+        replacerInstance?.cleanup();
         replacerInstance = null;
-        } catch (error) {
-          logger.error('Error in word replacement process', error);
-          // Cleanup on error
-          if (replacerInstance) {
-            replacerInstance.cleanup();
-            replacerInstance = null;
-          }
-        }
-      }).catch(err => {
-        logger.error('Critical error loading modules', err);
-      });
+      }, 'main.initializeComponents');
+      
+      // Report performance
+      const processingTime = performance.now() - startTime;
+      logger.debug(`Processed in ${processingTime.toFixed(2)}ms`);
     }
-
-    // Report performance
-    const processingTime = performance.now() - startTime;
-    logger.debug(`Processed in ${processingTime.toFixed(2)}ms`);
   }
 
   // Initialize components and styles with AsyncManager
@@ -376,13 +387,13 @@ interface ContentConfig {
       'initialize-extension',
       async (signal) => {
         try {
-      // Load CSS
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = chrome.runtime.getURL('content/styles.css');
-      
-      // Add error handling for CSS loading
-      link.onerror = () => {
+          // Load CSS
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = chrome.runtime.getURL('content/styles.css');
+          
+          // Add error handling for CSS loading
+          link.onerror = () => {
         logger.warn('Failed to load styles.css, injecting inline styles as fallback');
         // Inject critical styles inline as fallback
         const style = document.createElement('style');
@@ -424,80 +435,84 @@ interface ContentConfig {
           }
         `;
         document.head.appendChild(style);
-      };
+          };
+          
+          link.onload = () => {
+            logger.debug('Styles loaded successfully');
+          };
+          
+          if (document.head) {
+            document.head.appendChild(link);
+          }
+          
+          // Initialize storage with error handling
+          const storage = await safe(
+        async () => {
+          const storageModule = await import('../settings/storage');
+          return storageModule.getStorage();
+        },
+        'main.loadStorage',
+        null
+      );
       
-      link.onload = () => {
-      };
-      
-      if (document.head) {
-        document.head.appendChild(link);
-      }
-      
-      // Initialize storage with error handling
-      let storage;
-      try {
-        const storageModule = await import('../settings/storage');
-        storage = storageModule.getStorage();
-      } catch (error) {
-        logger.error('Failed to load storage module', error);
+      if (!storage) {
         return; // Cannot continue without storage
       }
       
       // Get settings with fallback
-      let settings;
-      try {
-        settings = await storage.getSettings();
+      let settings = await safe(
+        () => storage.getSettings(),
+        'main.loadSettings',
+        null
+      );
+      
+      if (settings) {
         logger.info('Content script loaded settings:', settings);
-      } catch (error) {
-        logger.error('Failed to load settings', error);
+      } else {
         // Try to get settings from background script as fallback
-        try {
-          const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-          if (response && response.settings) {
-            settings = response.settings;
-            logger.info('Got settings from background script:', settings);
-          } else {
-            settings = { targetLanguage: 'spanish', enabled: true }; // Use defaults
-          }
-        } catch (bgError) {
-          logger.error('Failed to get settings from background:', bgError);
-          settings = { targetLanguage: 'spanish', enabled: true }; // Use defaults
-        }
+        settings = await safe(
+          async () => {
+            const response = await sendMessage<{ settings?: UserSettings }>('GET_SETTINGS');
+            if (response && response.settings) {
+              logger.info('Got settings from background script:', response.settings);
+              return response.settings;
+            }
+            return null;
+          },
+          'main.getSettingsBackground',
+          { targetLanguage: 'spanish', enabled: true } as UserSettings // Use defaults
+        );
       }
       
       // Initialize Tooltip with error boundary
-      try {
-        const tooltipModule = await import('../ui/tooltip/tooltip');
-        tooltipInstance = new tooltipModule.Tooltip();
-        tooltipInstance.storage = storage;
-        tooltipInstance.currentLanguage = (settings.targetLanguage || 'spanish') as LanguageCode;
-      } catch (error) {
-        logger.error('Failed to initialize tooltip', error);
-        // Continue without tooltip - core functionality can still work
-      }
+      await safe(
+        async () => {
+          const tooltipModule = await import('../ui/tooltip/tooltip');
+          tooltipInstance = new tooltipModule.Tooltip();
+          tooltipInstance.storage = storage;
+          tooltipInstance.currentLanguage = (settings?.targetLanguage || 'spanish') as LanguageCode;
+        },
+        'main.initTooltip'
+      );
       
       // Initialize PageControl with error boundary
-      try {
-        const pageControlModule = await import('../ui/widget/widget');
-        pageControlInstance = new pageControlModule.PageControl({
-          ...settings,
-          targetLanguage: settings.targetLanguage as LanguageCode
-        });
-      } catch (error) {
-        logger.error('Failed to initialize page control', error);
-        // Continue without page control
-      }
+      await safe(
+        async () => {
+          const pageControlModule = await import('../ui/widget/widget');
+          pageControlInstance = new pageControlModule.PageControl({
+            ...settings!,
+            targetLanguage: settings!.targetLanguage as LanguageCode
+          });
+        },
+        'main.initPageControl'
+      );
       
           // Process content with error boundary
-          try {
-            await processContent();
-          } catch (error) {
-            logger.error('Failed to process content', error);
-          }
+          await processContent();
         } catch (err) {
           logger.error('Critical initialization error', err);
           // Cleanup on critical failure
-          cleanup();
+          await cleanup();
         }
       },
       { description: 'Initialize extension components', preventDuplicates: true }
@@ -614,6 +629,9 @@ interface ContentConfig {
       clearTimeout(navigationTimeout);
       navigationTimeout = null;
     }
+    
+    // Reset error boundary state
+    ContentScriptErrorBoundary.reset();
     
     // Disconnect mutation observer
     if (mutationObserver) {
@@ -807,6 +825,5 @@ interface ContentConfig {
       { description: 'Throttle resize events', preventDuplicates: true }
     );
   });
-
 
 })();
