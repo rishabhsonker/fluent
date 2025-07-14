@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useErrorHandler } from '../../utils/handler';
+import { UI_DIMENSIONS_EXTENDED, RATE_LIMITS, ANIMATION, NUMERIC } from '../../../../shared/constants';
 
 interface SettingsProps {
   onClose: () => void;
@@ -32,9 +33,9 @@ interface UpdateSettingsMessage {
 const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [apiKey, setApiKey] = useState<string>('');
   const [wordsToday, setWordsToday] = useState<number>(0);
-  const [wordsLimit, setWordsLimit] = useState<number>(100);
+  const [wordsLimit, setWordsLimit] = useState<number>(RATE_LIMITS.DAILY_WORDS);
   const [explanationsToday, setExplanationsToday] = useState<number>(0);
-  const [explanationsLimit, setExplanationsLimit] = useState<number>(100);
+  const [explanationsLimit, setExplanationsLimit] = useState<number>(RATE_LIMITS.DAILY_EXPLANATIONS);
   const [isPlus, setIsPlus] = useState<boolean>(false);
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
@@ -56,9 +57,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
         // Get daily usage
         const usage = await chrome.runtime.sendMessage({ type: 'GET_DAILY_USAGE' }) as DailyUsageResponse;
         setWordsToday(usage.wordsToday || 0);
-        setWordsLimit(usage.wordsLimit || 100);
+        setWordsLimit(usage.wordsLimit || RATE_LIMITS.DAILY_WORDS);
         setExplanationsToday(usage.explanationsToday || 0);
-        setExplanationsLimit(usage.explanationsLimit || 100);
+        setExplanationsLimit(usage.explanationsLimit || RATE_LIMITS.DAILY_EXPLANATIONS);
         setIsPlus(usage.isPlus || false);
       },
       'loadSettings'
@@ -74,7 +75,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           apiKey: apiKey.trim()
         });
         setSavedMessage('API key saved successfully!');
-        setTimeout(() => setSavedMessage(''), 3000);
+        setTimeout(() => setSavedMessage(''), ANIMATION.NOTIFICATION_DURATION_MS);
       },
       'saveApiKey',
       {
@@ -95,7 +96,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           });
           setApiKey('');
           setSavedMessage('API key removed');
-          setTimeout(() => setSavedMessage(''), 3000);
+          setTimeout(() => setSavedMessage(''), ANIMATION.NOTIFICATION_DURATION_MS);
         },
         'removeApiKey'
       );
@@ -146,7 +147,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                 <div 
                   style={{
                     ...styles.progressFill,
-                    width: `${Math.min((wordsToday / wordsLimit) * 100, 100)}%`,
+                    width: `${Math.min((wordsToday / wordsLimit) * NUMERIC.PERCENTAGE_MAX, NUMERIC.PERCENTAGE_MAX)}%`,
                     backgroundColor: wordsToday >= wordsLimit ? '#dc2626' : '#3b82f6'
                   }}
                 />
@@ -167,7 +168,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                 <div 
                   style={{
                     ...styles.progressFill,
-                    width: `${Math.min((explanationsToday / explanationsLimit) * 100, 100)}%`,
+                    width: `${Math.min((explanationsToday / explanationsLimit) * NUMERIC.PERCENTAGE_MAX, NUMERIC.PERCENTAGE_MAX)}%`,
                     backgroundColor: explanationsToday >= explanationsLimit ? '#dc2626' : '#3b82f6'
                   }}
                 />
@@ -288,7 +289,7 @@ const styles: Record<string, React.CSSProperties> = {
     right: 0,
     bottom: 0,
     backgroundColor: '#ffffff',
-    zIndex: 1000,
+    zIndex: UI_DIMENSIONS_EXTENDED.ZINDEX_MODAL,
     overflowY: 'auto',
   },
   header: {

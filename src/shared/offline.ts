@@ -3,9 +3,10 @@
  */
 
 import { logger } from './logger';
-import { storage } from '../features/settings/storage';
+// storage import removed - not used
 import { safe, chromeCall } from './utils/helpers';
 import type { Translation, LanguageCode } from './types';
+import { CACHE_LIMITS, TIME, ARRAY } from './constants';
 
 interface OfflineData {
   translations: Record<LanguageCode, Translation>;
@@ -23,8 +24,8 @@ interface WordFrequency {
 export class OfflineManager {
   private static instance: OfflineManager;
   private readonly STORAGE_KEY = 'fluent_offline_data';
-  private readonly MAX_OFFLINE_WORDS = 5000;
-  private readonly UPDATE_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 days
+  private readonly MAX_OFFLINE_WORDS = CACHE_LIMITS.STORAGE_CACHE_MAX_ENTRIES;
+  private readonly UPDATE_INTERVAL = TIME.DAYS_PER_WEEK * TIME.MS_PER_DAY; // 7 days
   private offlineData: OfflineData | null = null;
   private isLoaded: boolean = false;
 
@@ -131,7 +132,7 @@ export class OfflineManager {
   /**
    * Load word frequency list for a language
    */
-  private async loadWordFrequencyList(language: LanguageCode): Promise<string[]> {
+  private async loadWordFrequencyList(_language: LanguageCode): Promise<string[]> {
     const result = await safe(
       async () => {
         // Try to load from bundled data
@@ -139,7 +140,7 @@ export class OfflineManager {
         if (response.ok) {
           const data: WordFrequency[] = await response.json();
           return data
-            .slice(0, Math.floor(this.MAX_OFFLINE_WORDS / 3))
+            .slice(0, Math.floor(this.MAX_OFFLINE_WORDS / ARRAY.TRIPLE_SIZE))
             .map(item => item.word);
         }
         return null;
@@ -162,7 +163,7 @@ export class OfflineManager {
       list.forEach(word => allWords.add(word));
     });
 
-    const words = Array.from(allWords).slice(0, this.MAX_OFFLINE_WORDS);
+    // const words = Array.from(allWords).slice(0, this.MAX_OFFLINE_WORDS); // Removed - not used
     
     // For now, use hardcoded translations for most common words
     // In production, this would fetch from the API during off-peak hours
@@ -292,7 +293,7 @@ export class OfflineManager {
 
     // Keep only top 1000 words per language
     for (const lang of Object.keys(data.translations) as LanguageCode[]) {
-      const wordList = data.wordLists[lang].slice(0, 1000);
+      const wordList = data.wordLists[lang].slice(0, CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES);
       essential.wordLists[lang] = wordList;
       
       essential.translations[lang] = {};

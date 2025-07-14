@@ -3,7 +3,7 @@
 /**
  * Environment variables type definitions for Fluent Chrome Extension
  */
-interface ImportMetaEnv {
+declare interface ImportMetaEnv {
   // Custom environment variables
   readonly VITE_FLUENT_DEBUG?: string
   
@@ -14,6 +14,4 @@ interface ImportMetaEnv {
   readonly BASE_URL: string
 }
 
-interface ImportMeta {
-  readonly env: ImportMetaEnv
-}
+// ImportMeta is already declared by Vite, we just extend ImportMetaEnv above

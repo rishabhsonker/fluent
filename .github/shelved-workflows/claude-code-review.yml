@@ -47,7 +47,6 @@ jobs:
             - Potential bugs or issues
             - Performance considerations
             - Security concerns
-            - Test coverage
             
             Be constructive and helpful in your feedback.
 
@@ -60,7 +59,6 @@ jobs:
           #   - For TypeScript files: Type safety and proper interface usage
           #   - For API endpoints: Security, input validation, and error handling
           #   - For React components: Performance, accessibility, and best practices
-          #   - For tests: Coverage, edge cases, and test quality
           
           # Optional: Different prompts for different authors
           # direct_prompt: |
@@ -68,8 +66,8 @@ jobs:
           #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
           #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
           
-          # Optional: Add specific tools for running tests or linting
-          # allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck)"
+          # Optional: Add specific tools for running linting
+          # allowed_tools: "Bash(npm run lint),Bash(npm run typecheck)"
           
           # Optional: Skip review for certain conditions
           # if: |

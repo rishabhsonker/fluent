@@ -6,6 +6,7 @@
  */
 
 import { getErrorHandler } from './error-handler';
+import { PROCESSING_LIMITS } from '../constants';
 
 /**
  * Lightweight wrapper for Chrome API calls with automatic error handling
@@ -182,7 +183,7 @@ export async function sendMessage<T>(
 export async function timed<T>(
   fn: () => Promise<T>,
   context: string,
-  slowThreshold = 1000
+  slowThreshold = PROCESSING_LIMITS.SLOW_OPERATION_THRESHOLD_MS
 ): Promise<T> {
   const errorHandler = getErrorHandler();
   const start = performance.now();

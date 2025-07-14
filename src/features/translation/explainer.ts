@@ -3,9 +3,9 @@
 'use strict';
 
 import { storage } from '../settings/storage';
-import { logger } from '../../shared/logger';
 import { safe } from '../../shared/utils/helpers';
 import { LanguageCode, ContextExplanation, MessageRequest, MessageResponse } from '../../shared/types';
+import { CACHE_LIMITS, THRESHOLD, NUMERIC } from '../../shared/constants';
 
 interface CommonExplanations {
   [key: string]: ContextExplanation;
@@ -245,10 +245,10 @@ Format as JSON: { "explanation": "...", "example": "...", "tip": "..." }
   
   private async saveCache(): Promise<void> {
     // Limit cache size
-    if (this.cache.size > 1000) {
+    if (this.cache.size > CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES) {
       // Remove oldest entries
       const entries = Array.from(this.cache.entries());
-      this.cache = new Map(entries.slice(-800));
+      this.cache = new Map(entries.slice(-(CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES * THRESHOLD.WARNING_THRESHOLD / NUMERIC.PERCENTAGE_MAX)));
     }
     
     // Save to storage

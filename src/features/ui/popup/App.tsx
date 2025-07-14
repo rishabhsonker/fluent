@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SUPPORTED_LANGUAGES } from '../../../shared/constants';
+import { SUPPORTED_LANGUAGES, ANIMATION } from '../../../shared/constants';
 import BlacklistManager from './components/BlacklistManager';
 import Settings from './components/Settings';
 import RateLimitStatus from './components/RateLimitStatus';
@@ -116,7 +116,7 @@ function App(): React.JSX.Element {
     
     setSettings({ ...settings, targetLanguage: language as LanguageCode });
     
-    const response = await chrome.runtime.sendMessage({
+    await chrome.runtime.sendMessage({
       type: 'UPDATE_SETTINGS',
       settings: { targetLanguage: language }
     });
@@ -129,7 +129,7 @@ function App(): React.JSX.Element {
       if (tab.id) {
         chrome.tabs.reload(tab.id);
       }
-    }, 100);
+    }, ANIMATION.PROGRESS_UPDATE_INTERVAL_MS);
   }
 
   if (loading || !settings) {

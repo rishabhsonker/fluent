@@ -35,19 +35,16 @@
 'use strict';
 
 import type { UserSettings, LanguageCode, MessageRequest, MessageResponse } from '../../../shared/types';
-import { logger } from '../../../shared/logger';
+// logger import removed - not used
 import { ComponentAsyncManager } from '../../../shared/async';
 import { safe, safeSync } from '../../../shared/utils/helpers';
+import { TIME, NUMERIC, ARRAY, UI_DIMENSIONS_EXTENDED } from '../../../shared/constants';
 
 interface PageControlSettings extends Partial<UserSettings> {
   targetLanguage: LanguageCode;
 }
 
-interface LanguageButton {
-  lang: LanguageCode;
-  flag: string;
-  name: string;
-}
+// Removed unused LanguageButton interface
 
 export class PageControl {
   private settings: PageControlSettings;
@@ -62,7 +59,7 @@ export class PageControl {
   private hasDraggedDistance: boolean = false;
   private dragOffset = { x: 0, y: 0 };
   private dragStartPos = { x: 0, y: 0 };
-  private position = { x: 24, y: 24 }; // Default bottom-right position
+  private position = { x: TIME.HOURS_PER_DAY, y: TIME.HOURS_PER_DAY }; // Default bottom-right position
   
   // Store event handlers for cleanup
   private documentClickHandler: ((e: Event) => void) | null = null;
@@ -90,7 +87,7 @@ export class PageControl {
     // Use extension icon instead of flag
     const iconImg = document.createElement('img');
     iconImg.className = 'fluent-control-icon';
-    iconImg.src = chrome.runtime.getURL('icons/icon-48.png');
+    iconImg.src = chrome.runtime.getURL(`icons/icon-${UI_DIMENSIONS_EXTENDED.ICON_SIZE_MEDIUM_PX + TIME.HOURS_PER_DAY / ARRAY.PAIR_SIZE}.png`);
     iconImg.alt = 'Fluent';
     
     // Add fallback in case icon fails to load
@@ -200,8 +197,8 @@ export class PageControl {
     
     // Menu items data
     const menuItems = [
-      { action: 'pause-everywhere', icon: '⏸️', text: 'Pause everywhere (6 hours)' },
-      { action: 'pause-site', icon: '🚫', text: 'Pause this site (6 hours)' },
+      { action: 'pause-everywhere', icon: '⏸️', text: `Pause everywhere (${TIME.HOURS_PER_DAY / NUMERIC.DECIMAL_PRECISION_2 / ARRAY.PAIR_SIZE} hours)` },
+      { action: 'pause-site', icon: '🚫', text: `Pause this site (${TIME.HOURS_PER_DAY / NUMERIC.DECIMAL_PRECISION_2 / ARRAY.PAIR_SIZE} hours)` },
       { action: 'disable-site', icon: '❌', text: 'Disable for this site' }
     ];
     
@@ -375,7 +372,7 @@ export class PageControl {
   }
 
   private async pauseEverywhere(): Promise<void> {
-    const pauseUntil = Date.now() + (6 * 60 * 60 * 1000); // 6 hours
+    const pauseUntil = Date.now() + (TIME.HOURS_PER_DAY / NUMERIC.DECIMAL_PRECISION_2 / ARRAY.PAIR_SIZE * TIME.MS_PER_HOUR); // 6 hours
     
     const message: MessageRequest = {
       type: 'UPDATE_SETTINGS',
@@ -389,7 +386,7 @@ export class PageControl {
     this.asyncManager.execute(
       'pause-timer',
       async (signal) => {
-        await this.asyncManager.delay(6 * 60 * 60 * 1000, signal);
+        await this.asyncManager.delay(TIME.HOURS_PER_DAY / NUMERIC.DECIMAL_PRECISION_2 / ARRAY.PAIR_SIZE * TIME.MS_PER_HOUR, signal);
         if (!signal.aborted) {
           await this.checkPauseState();
         }
@@ -406,7 +403,7 @@ export class PageControl {
 
   private async pauseSite(): Promise<void> {
     const hostname = window.location.hostname;
-    const pauseUntil = Date.now() + (6 * 60 * 60 * 1000); // 6 hours
+    const pauseUntil = Date.now() + (TIME.HOURS_PER_DAY / NUMERIC.DECIMAL_PRECISION_2 / ARRAY.PAIR_SIZE * TIME.MS_PER_HOUR); // 6 hours
     
     const message: MessageRequest = {
       type: 'UPDATE_SITE_SETTINGS',
@@ -491,7 +488,7 @@ export class PageControl {
       const dx = Math.abs(e.clientX - this.dragStartPos.x);
       const dy = Math.abs(e.clientY - this.dragStartPos.y);
       
-      if (dx > 5 || dy > 5) {
+      if (dx > NUMERIC.MINUTES_SHORT || dy > NUMERIC.MINUTES_SHORT) {
         this.isDragging = true;
         this.hasDraggedDistance = true;
       }
@@ -529,7 +526,7 @@ export class PageControl {
     this.updatePositionStyle();
   }
 
-  private endDrag(e: MouseEvent): void {
+  private endDrag(_e: MouseEvent): void {
     if (this.mouseMoveHandler) {
       document.removeEventListener('mousemove', this.mouseMoveHandler);
       this.mouseMoveHandler = null;
@@ -547,7 +544,7 @@ export class PageControl {
       this.asyncManager.execute(
         'reset-drag-state',
         async (signal) => {
-          await this.asyncManager.delay(100, signal);
+          await this.asyncManager.delay(NUMERIC.PERCENTAGE_MAX, signal);
           if (!signal.aborted) {
             this.isDragging = false;
             this.hasDraggedDistance = false;
@@ -593,8 +590,8 @@ export class PageControl {
         this.position = result.fluent_control_position;
         
         // Ensure position is within current viewport
-        const maxX = window.innerWidth - (this.element?.offsetWidth || 48);
-        const maxY = window.innerHeight - (this.element?.offsetHeight || 48);
+        const maxX = window.innerWidth - (this.element?.offsetWidth || (UI_DIMENSIONS_EXTENDED.ICON_SIZE_MEDIUM_PX + TIME.HOURS_PER_DAY / ARRAY.PAIR_SIZE));
+        const maxY = window.innerHeight - (this.element?.offsetHeight || (UI_DIMENSIONS_EXTENDED.ICON_SIZE_MEDIUM_PX + TIME.HOURS_PER_DAY / ARRAY.PAIR_SIZE));
         
         this.position.x = Math.max(0, Math.min(this.position.x, maxX));
         this.position.y = Math.max(0, Math.min(this.position.y, maxY));
@@ -617,8 +614,8 @@ export class PageControl {
 
     // Default to bottom-right corner
     this.position = {
-      x: window.innerWidth - (this.element.offsetWidth || 48) - 24,
-      y: window.innerHeight - (this.element.offsetHeight || 48) - 24
+      x: window.innerWidth - (this.element.offsetWidth || (UI_DIMENSIONS_EXTENDED.ICON_SIZE_MEDIUM_PX + TIME.HOURS_PER_DAY / ARRAY.PAIR_SIZE)) - TIME.HOURS_PER_DAY,
+      y: window.innerHeight - (this.element.offsetHeight || (UI_DIMENSIONS_EXTENDED.ICON_SIZE_MEDIUM_PX + TIME.HOURS_PER_DAY / ARRAY.PAIR_SIZE)) - TIME.HOURS_PER_DAY
     };
     
     this.updatePositionStyle();

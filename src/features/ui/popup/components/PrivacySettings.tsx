@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useErrorHandler } from '../../utils/handler';
+import { UI_DIMENSIONS_EXTENDED, ANIMATION } from '../../../../shared/constants';
 
 interface PrivacySettingsProps {
   onClose?: () => void;
@@ -49,10 +50,10 @@ const PrivacySettings: React.FC<PrivacySettingsProps> = ({ onClose }) => {
           padding: 12px 24px;
           border-radius: 6px;
           font-size: 14px;
-          z-index: 1000;
+          z-index: ${UI_DIMENSIONS_EXTENDED.ZINDEX_MODAL};
         `;
         document.body.appendChild(message);
-        setTimeout(() => message.remove(), 3000);
+        setTimeout(() => message.remove(), ANIMATION.NOTIFICATION_DURATION_MS);
       },
       'saveSettings'
     );

@@ -71,7 +71,6 @@ jobs:
             This PR merges the release branch into main for production deployment.
             
             ### Checklist
-            - [ ] All tests passing
             - [ ] Version numbers updated
             - [ ] CHANGELOG.md updated
             - [ ] No console.log statements in production code

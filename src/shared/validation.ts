@@ -3,10 +3,17 @@
  * across extension and worker components
  */
 
+import { NUMERIC, DOMAIN } from './constants';
+
 export const VALIDATION_LIMITS = {
   // Word validation
   WORD_MIN_LENGTH: 2,
   WORD_MAX_LENGTH: 50,
+  
+  // Language-specific word lengths
+  SPANISH_MAX_WORD_LENGTH: 30,
+  FRENCH_MAX_WORD_LENGTH: 35,
+  GERMAN_MAX_WORD_LENGTH: 50,
   
   // Translation validation  
   TRANSLATION_MAX_LENGTH: 100,
@@ -20,8 +27,8 @@ export const VALIDATION_LIMITS = {
   CONTEXT_MAX_LENGTH: 500,
   
   // Payload limits
-  MAX_REQUEST_SIZE_BYTES: 10 * 1024, // 10KB
-  MAX_RESPONSE_SIZE_BYTES: 50 * 1024, // 50KB
+  MAX_REQUEST_SIZE_BYTES: DOMAIN.MAX_CONSECUTIVE_ERRORS * DOMAIN.BACKOFF_FACTOR * NUMERIC.BYTES_PER_KB, // 10KB
+  MAX_RESPONSE_SIZE_BYTES: DOMAIN.MAX_ELEMENTS / DOMAIN.BACKOFF_FACTOR * NUMERIC.BYTES_PER_KB, // 50KB
   
   // API key limits
   API_KEY_MIN_LENGTH: 10,
@@ -58,6 +65,7 @@ export const VALIDATION_PATTERNS = {
   GERMAN_CHARS: /[äöüßÄÖÜẞ]/,
   
   // Control characters and zero-width characters to block
+  // eslint-disable-next-line no-control-regex
   CONTROL_CHARS: /[\x00-\x1F\x7F-\x9F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/,
 } as const;
 
@@ -100,19 +108,19 @@ export const LANGUAGE_VALIDATORS = {
     isValidChar: (char: string): boolean => {
       return /^[\p{L}\p{M}'-]$/u.test(char) || VALIDATION_PATTERNS.SPANISH_CHARS.test(char);
     },
-    maxWordLength: 30, // Spanish words tend to be shorter
+    maxWordLength: VALIDATION_LIMITS.SPANISH_MAX_WORD_LENGTH, // Spanish words tend to be shorter
   },
   french: {
     isValidChar: (char: string): boolean => {
       return /^[\p{L}\p{M}'-]$/u.test(char) || VALIDATION_PATTERNS.FRENCH_CHARS.test(char);
     },
-    maxWordLength: 35, // French can have longer compound words
+    maxWordLength: VALIDATION_LIMITS.FRENCH_MAX_WORD_LENGTH, // French can have longer compound words
   },
   german: {
     isValidChar: (char: string): boolean => {
       return /^[\p{L}\p{M}'-]$/u.test(char) || VALIDATION_PATTERNS.GERMAN_CHARS.test(char);
     },
-    maxWordLength: 50, // German allows very long compound words
+    maxWordLength: VALIDATION_LIMITS.GERMAN_MAX_WORD_LENGTH, // German allows very long compound words
   },
 } as const;
 

@@ -4,7 +4,7 @@
  */
 
 import { logger } from '../../shared/logger';
-import { SECURITY } from '../../shared/constants';
+import { SECURITY, AUTH_CONSTANTS, CRYPTO, DOMAIN, NUMERIC } from '../../shared/constants';
 import { safe, chromeCall } from '../../shared/utils/helpers';
 
 interface EncryptedData {
@@ -57,8 +57,8 @@ export class SecureCrypto {
         const dataBuffer = encoder.encode(data);
         
         // Generate random salt and IV
-        const salt = crypto.getRandomValues(new Uint8Array(16));
-        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const salt = crypto.getRandomValues(new Uint8Array(CRYPTO.SALT_LENGTH));
+        const iv = crypto.getRandomValues(new Uint8Array(CRYPTO.TAG_LENGTH));
         
         // Derive key
         const key = await this.deriveKey(salt);
@@ -82,7 +82,7 @@ export class SecureCrypto {
         };
       },
       'crypto.encrypt'
-    ).catch(error => {
+    ).catch(() => {
       throw new Error('Failed to encrypt data');
     });
   }
@@ -116,7 +116,7 @@ export class SecureCrypto {
         return decoder.decode(decryptedBuffer);
       },
       'crypto.decrypt'
-    ).catch(error => {
+    ).catch(() => {
       throw new Error('Failed to decrypt data');
     });
   }
@@ -137,7 +137,7 @@ export class SecureCrypto {
     await safe(
       async () => {
         // Validate API key format
-        if (apiKey.length < 10 || apiKey.length > 200) {
+        if (apiKey.length < DOMAIN.MAX_CONSECUTIVE_ERRORS * DOMAIN.BACKOFF_FACTOR || apiKey.length > NUMERIC.PERCENTAGE_MAX * DOMAIN.BACKOFF_FACTOR) {
           throw new Error('Invalid API key format');
         }
         
@@ -176,7 +176,7 @@ export class SecureCrypto {
         }
         
         // Check if data is too old (optional expiry)
-        const maxAge = 90 * 24 * 60 * 60 * 1000; // 90 days
+        const maxAge = AUTH_CONSTANTS.TOKEN_REFRESH_INTERVAL_MS * CRYPTO.TAG_LENGTH; // ~90 days (12 weeks)
         if (Date.now() - encryptedData.timestamp > maxAge) {
           logger.warn('API key has expired');
           await this.clearApiKey();

@@ -6,6 +6,7 @@
  */
 
 import { LanguageCode } from '../../shared/types';
+import { SRS, TIME, MATH, QUALITY, NUMERIC, THRESHOLD } from '../../shared/constants';
 
 // Extended WordProgress type for spaced repetition
 export interface SpacedRepetitionWordData {
@@ -53,14 +54,14 @@ class SpacedRepetition {
   private defaultEaseFactor: number;
 
   constructor() {
-    // Default intervals in days: 1, 3, 7, 14, 30
-    this.intervals = [1, 3, 7, 14, 30];
+    // Default intervals in days
+    this.intervals = [...SRS.INTERVALS_DAYS];
     
     // Minimum ease factor (difficulty)
-    this.minEaseFactor = 1.3;
+    this.minEaseFactor = SRS.EASE_FACTOR_MIN;
     
     // Default ease factor for new words
-    this.defaultEaseFactor = 2.5;
+    this.defaultEaseFactor = SRS.EASE_FACTOR_DEFAULT;
   }
 
   /**
@@ -100,7 +101,7 @@ class SpacedRepetition {
     updated.easeFactor = Math.max(newEaseFactor, this.minEaseFactor);
 
     // Determine next interval
-    if (quality >= 3) {
+    if (quality >= SRS.QUALITY_THRESHOLD_PASS) {
       // Correct response
       updated.correctCount = (updated.correctCount || 0) + 1;
       
@@ -120,7 +121,7 @@ class SpacedRepetition {
     }
 
     // Calculate next review date
-    updated.nextReview = now + (updated.interval * 24 * 60 * 60 * 1000);
+    updated.nextReview = now + (updated.interval * TIME.MS_PER_DAY);
 
     // Calculate mastery level (0-100)
     updated.mastery = this.calculateMastery(updated);
@@ -132,7 +133,7 @@ class SpacedRepetition {
    * Calculate new ease factor based on quality of response
    */
   private calculateEaseFactor(oldEaseFactor: number, quality: QualityRating): number {
-    return oldEaseFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+    return oldEaseFactor + (MATH.EASE_FACTOR_INCREASE - (QUALITY.RATING_PERFECT - quality) * (MATH.DIFFICULTY_EASY_FACTOR + (QUALITY.RATING_PERFECT - quality) * MATH.DIFFICULTY_HARD_FACTOR));
   }
 
   /**
@@ -142,19 +143,23 @@ class SpacedRepetition {
     if (!wordData.totalSeen) return 0;
     
     const correctRatio = wordData.correctCount / wordData.totalSeen;
-    const intervalWeight = Math.min(wordData.interval / 30, 1);
-    const repetitionWeight = Math.min(wordData.repetitions / 5, 1);
+    const intervalWeight = Math.min(wordData.interval / TIME.DAYS_PER_MONTH, 1);
+    const repetitionWeight = Math.min(wordData.repetitions / QUALITY.RATING_PERFECT, 1);
     
     // Weighted average: 40% correct ratio, 30% interval, 30% repetitions
-    const mastery = (correctRatio * 0.4 + intervalWeight * 0.3 + repetitionWeight * 0.3) * 100;
+    const mastery = (
+      correctRatio * SRS.MASTERY_CALCULATION_WEIGHTS.CORRECT_RATIO + 
+      intervalWeight * SRS.MASTERY_CALCULATION_WEIGHTS.INTERVAL + 
+      repetitionWeight * SRS.MASTERY_CALCULATION_WEIGHTS.REPETITIONS
+    ) * NUMERIC.PERCENTAGE_MAX;
     
-    return Math.round(Math.min(mastery, 100));
+    return Math.round(Math.min(mastery, NUMERIC.PERCENTAGE_MAX));
   }
 
   /**
    * Get words due for review
    */
-  getWordsForReview(wordsData: WordsData, limit: number = 10): SpacedRepetitionWordData[] {
+  getWordsForReview(wordsData: WordsData, limit: number = SRS.MAX_REVIEW_WORDS_PER_SESSION): SpacedRepetitionWordData[] {
     const now = Date.now();
     const dueWords: SpacedRepetitionWordData[] = [];
 
@@ -177,7 +182,7 @@ class SpacedRepetition {
   /**
    * Get new words to introduce
    */
-  getNewWords(wordsData: WordsData, availableWords: string[], limit: number = 3): string[] {
+  getNewWords(wordsData: WordsData, availableWords: string[], limit: number = SRS.MAX_NEW_WORDS_PER_SESSION): string[] {
     const learnedWords = new Set(Object.keys(wordsData));
     const newWords = availableWords.filter(word => !learnedWords.has(word));
     
@@ -195,7 +200,7 @@ class SpacedRepetition {
     totalLimit: number = 6
   ): string[] {
     // Prioritize review words (max 2-3)
-    const reviewWords = this.getWordsForReview(wordsData, 3)
+    const reviewWords = this.getWordsForReview(wordsData, QUALITY.RATING_GOOD)
       .filter(item => pageWords.includes(item.word))
       .map(item => item.word);
 
@@ -213,21 +218,21 @@ class SpacedRepetition {
     switch (interaction) {
       case 'hover':
         // Just hovering means they needed help
-        return 2;
+        return QUALITY.RATING_FAIR as QualityRating;
       case 'pronunciation':
         // Needed pronunciation help
-        return 3;
+        return QUALITY.RATING_GOOD as QualityRating;
       case 'context':
         // Needed context explanation
-        return 2;
+        return QUALITY.RATING_FAIR as QualityRating;
       case 'ignored':
         // Recognized without hovering
-        return 4;
+        return QUALITY.RATING_GREAT as QualityRating;
       case 'clicked':
         // Actively engaged
-        return 5;
+        return QUALITY.RATING_PERFECT as QualityRating;
       default:
-        return 3;
+        return QUALITY.RATING_GOOD as QualityRating;
     }
   }
 
@@ -240,8 +245,8 @@ class SpacedRepetition {
 
     return {
       totalWords: words.length,
-      masteredWords: words.filter(w => w.mastery >= 80).length,
-      wordsInProgress: words.filter(w => w.mastery > 0 && w.mastery < 80).length,
+      masteredWords: words.filter(w => w.mastery >= THRESHOLD.WARNING_THRESHOLD).length,
+      wordsInProgress: words.filter(w => w.mastery > 0 && w.mastery < THRESHOLD.WARNING_THRESHOLD).length,
       wordsDueForReview: words.filter(w => w.nextReview <= now).length,
       averageMastery: words.reduce((sum, w) => sum + (w.mastery || 0), 0) / words.length || 0,
       todayReviews: words.filter(w => {

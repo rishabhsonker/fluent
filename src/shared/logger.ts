@@ -1,3 +1,5 @@
+import { NUMERIC, PROCESSING } from './constants';
+
 /**
  * Logger - Production-safe logging with environment awareness
  * 
@@ -37,11 +39,18 @@
 type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG';
 
 // Define log level values
+enum LogLevelValue {
+  ERROR = 0,
+  WARN = 1,
+  INFO = 2,
+  DEBUG = 3
+}
+
 interface LogLevels {
-  ERROR: 0;
-  WARN: 1;
-  INFO: 2;
-  DEBUG: 3;
+  ERROR: LogLevelValue.ERROR;
+  WARN: LogLevelValue.WARN;
+  INFO: LogLevelValue.INFO;
+  DEBUG: LogLevelValue.DEBUG;
 }
 
 // Define log entry structure
@@ -71,10 +80,10 @@ class Logger {
     
     // Log levels
     this.levels = {
-      ERROR: 0,
-      WARN: 1,
-      INFO: 2,
-      DEBUG: 3
+      ERROR: LogLevelValue.ERROR,
+      WARN: LogLevelValue.WARN,
+      INFO: LogLevelValue.INFO,
+      DEBUG: LogLevelValue.DEBUG
     };
     
     // Set log level based on environment
@@ -84,7 +93,7 @@ class Logger {
     
     // Log history for debugging (limited size)
     this.history = [];
-    this.maxHistorySize = 50;
+    this.maxHistorySize = PROCESSING.MAX_QUEUE_SIZE;
     
     // Don't log initialization in production
   }
@@ -180,7 +189,7 @@ class Logger {
 
   // Export logs for debugging
   exportLogs(): string {
-    return JSON.stringify(this.history, null, 2);
+    return JSON.stringify(this.history, null, NUMERIC.DECIMAL_PRECISION_2);
   }
 }
 

@@ -1,0 +1,15 @@
+# Placeholder workflow to prevent GitHub from showing errors
+# All CI/CD workflows have been temporarily shelved for rewrite
+# They can be found in .github/shelved-workflows/
+
+name: Placeholder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder
+        run: echo "CI/CD workflows are being rewritten. This is a placeholder."

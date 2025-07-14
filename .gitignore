@@ -134,6 +134,8 @@ certs/
 *.old
 *.orig
 *.rej
+lint-*.txt
+*-lint.txt
 
 # ===========================
 # Documentation (Project Specific)

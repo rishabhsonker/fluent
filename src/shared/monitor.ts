@@ -5,6 +5,7 @@
 
 import { logger } from './logger';
 import { safe, safeSync } from './utils/helpers';
+import { MONITORING, PERFORMANCE_LIMITS, NUMERIC, ARRAY, TIME, DOMAIN, PROCESSING_LIMITS } from './constants';
 
 interface MemoryStats {
   usedJSHeapSize: number;
@@ -22,13 +23,13 @@ interface MemoryThresholds {
 
 export class MemoryMonitor {
   private lastCheck = 0;
-  private checkInterval = 5000; // Check every 5 seconds
+  private checkInterval = MONITORING.MEMORY_CHECK_INTERVAL_MS;
   private callbacks: Map<string, (stats: MemoryStats) => void> = new Map();
   
   private readonly thresholds: MemoryThresholds = {
-    warning: 20, // 20MB warning
-    critical: 25, // 25MB critical
-    max: 30 // 30MB Chrome limit
+    warning: MONITORING.MEMORY_WARNING_THRESHOLD_MB,
+    critical: MONITORING.MEMORY_CRITICAL_THRESHOLD_MB,
+    max: PERFORMANCE_LIMITS.MAX_MEMORY_MB
   };
 
   /**
@@ -48,7 +49,7 @@ export class MemoryMonitor {
             usedJSHeapSize: used,
             totalJSHeapSize: total,
             jsHeapSizeLimit: limit,
-            percentUsed: (used / limit) * 100,
+            percentUsed: (used / limit) * NUMERIC.PERCENTAGE_MAX,
             timestamp: Date.now()
           };
         }
@@ -60,7 +61,7 @@ export class MemoryMonitor {
       {
         usedJSHeapSize: 0,
         totalJSHeapSize: 0,
-        jsHeapSizeLimit: 30 * 1024 * 1024, // 30MB
+        jsHeapSizeLimit: PERFORMANCE_LIMITS.MAX_MEMORY_MB * NUMERIC.BYTES_PER_MB, // 30MB
         percentUsed: 0,
         timestamp: Date.now()
       }
@@ -76,26 +77,26 @@ export class MemoryMonitor {
     
     // Count DOM elements
     const domElements = document.querySelectorAll('*').length;
-    estimatedBytes += domElements * 100; // ~100 bytes per element
+    estimatedBytes += domElements * NUMERIC.PERCENTAGE_MAX; // ~100 bytes per element
     
     // Count Fluent-specific elements
     const fluentElements = document.querySelectorAll('[data-fluent-replaced]').length;
-    estimatedBytes += fluentElements * 500; // More memory for our elements
+    estimatedBytes += fluentElements * (NUMERIC.MINUTES_SHORT * NUMERIC.PERCENTAGE_MAX); // More memory for our elements (500 bytes)
     
     // Count event listeners (rough estimate)
     const interactiveElements = document.querySelectorAll('button, a, input, [onclick]').length;
-    estimatedBytes += interactiveElements * 200;
+    estimatedBytes += interactiveElements * (ARRAY.PAIR_SIZE * NUMERIC.PERCENTAGE_MAX); // 200 bytes per interactive element
     
     // Add base overhead
-    estimatedBytes += 5 * 1024 * 1024; // 5MB base
+    estimatedBytes += NUMERIC.MINUTES_SHORT * NUMERIC.BYTES_PER_MB; // 5MB base
     
-    const limit = 30 * 1024 * 1024; // 30MB
+    const limit = DOMAIN.STATS_MONTH_DAYS * NUMERIC.BYTES_PER_MB; // 30MB
     
     return {
       usedJSHeapSize: estimatedBytes,
       totalJSHeapSize: estimatedBytes,
       jsHeapSizeLimit: limit,
-      percentUsed: (estimatedBytes / limit) * 100,
+      percentUsed: (estimatedBytes / limit) * NUMERIC.PERCENTAGE_MAX,
       timestamp: Date.now()
     };
   }
@@ -113,12 +114,12 @@ export class MemoryMonitor {
     
     this.lastCheck = now;
     const stats = await this.getMemoryUsage();
-    const usedMB = stats.usedJSHeapSize / (1024 * 1024);
+    const usedMB = stats.usedJSHeapSize / NUMERIC.BYTES_PER_MB;
     
     // Log if approaching limits
     if (usedMB > this.thresholds.critical) {
       logger.error('[Memory] CRITICAL: Memory usage exceeds critical threshold', {
-        usedMB: usedMB.toFixed(2),
+        usedMB: usedMB.toFixed(NUMERIC.DECIMAL_PRECISION_2),
         percentUsed: stats.percentUsed.toFixed(1),
         threshold: this.thresholds.critical
       });
@@ -132,7 +133,7 @@ export class MemoryMonitor {
       });
     } else if (usedMB > this.thresholds.warning) {
       logger.warn('[Memory] Warning: Memory usage approaching limit', {
-        usedMB: usedMB.toFixed(2),
+        usedMB: usedMB.toFixed(NUMERIC.DECIMAL_PRECISION_2),
         percentUsed: stats.percentUsed.toFixed(1),
         threshold: this.thresholds.warning
       });
@@ -186,8 +187,8 @@ export class MemoryMonitor {
         }
         
         // Method 4: Create and destroy large objects to trigger GC
-        let dummy = new Array(1000000).fill(0);
-        dummy = null as any;
+        // Force garbage collection by creating and releasing memory
+        new Array(PROCESSING_LIMITS.LARGE_ARRAY_SIZE).fill(0);
         
         logger.info('[Memory] Memory cleanup attempted');
       },
@@ -199,8 +200,8 @@ export class MemoryMonitor {
    * Get memory usage formatted for display
    */
   getFormattedStats(stats: MemoryStats): string {
-    const usedMB = (stats.usedJSHeapSize / (1024 * 1024)).toFixed(2);
-    const limitMB = (stats.jsHeapSizeLimit / (1024 * 1024)).toFixed(0);
+    const usedMB = (stats.usedJSHeapSize / NUMERIC.BYTES_PER_MB).toFixed(NUMERIC.DECIMAL_PRECISION_2);
+    const limitMB = (stats.jsHeapSizeLimit / NUMERIC.BYTES_PER_MB).toFixed(ARRAY.FIRST_INDEX);
     const percent = stats.percentUsed.toFixed(1);
     
     return `Memory: ${usedMB}MB / ${limitMB}MB (${percent}%)`;
@@ -210,7 +211,7 @@ export class MemoryMonitor {
    * Check if memory usage is safe
    */
   isMemorySafe(stats: MemoryStats): boolean {
-    const usedMB = stats.usedJSHeapSize / (1024 * 1024);
+    const usedMB = stats.usedJSHeapSize / NUMERIC.BYTES_PER_MB;
     return usedMB < this.thresholds.warning;
   }
 
@@ -218,7 +219,7 @@ export class MemoryMonitor {
    * Get recommended action based on memory usage
    */
   getRecommendedAction(stats: MemoryStats): 'none' | 'reduce' | 'cleanup' | 'reload' {
-    const usedMB = stats.usedJSHeapSize / (1024 * 1024);
+    const usedMB = stats.usedJSHeapSize / NUMERIC.BYTES_PER_MB;
     
     if (usedMB >= this.thresholds.max) {
       return 'reload'; // Page reload recommended
@@ -261,5 +262,5 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
       });
       await monitor.forceGarbageCollection();
     }
-  }, 30000); // Check every 30 seconds
+  }, TIME.MS_PER_MINUTE / ARRAY.PAIR_SIZE); // Check every 30 seconds
 }

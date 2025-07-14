@@ -4,6 +4,8 @@
  */
 
 import { ComponentAsyncManager } from '../../shared/async';
+import { UI_DIMENSIONS_EXTENDED, ANIMATION, TIME, ARRAY, THRESHOLD } from '../../shared/constants';
+import { CSS_SHADOWS } from '../../shared/constants/css-variables';
 
 // AsyncManager instance
 const asyncManager = new ComponentAsyncManager('Notifications');
@@ -21,12 +23,12 @@ export function showErrorNotification(message: string): void {
     color: white;
     padding: 16px 24px;
     border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: ${CSS_SHADOWS.CONTROL_BUTTON};
     font-family: system-ui, -apple-system, sans-serif;
     font-size: 14px;
     line-height: 1.5;
     max-width: 320px;
-    z-index: 10000;
+    z-index: ${UI_DIMENSIONS_EXTENDED.ZINDEX_NOTIFICATION};
     animation: slideIn 0.3s ease-out;
   `;
   notification.textContent = message;
@@ -39,7 +41,7 @@ export function showErrorNotification(message: string): void {
   asyncManager.execute(
     `notification-remove-${Date.now()}`,
     async (signal) => {
-      await asyncManager.delay(5000, signal);
+      await asyncManager.delay(ANIMATION.NOTIFICATION_DURATION_MS + (ARRAY.PAIR_SIZE * TIME.MS_PER_SECOND), signal);
       if (!signal.aborted && notification.parentNode) {
         notification.remove();
       }
@@ -66,12 +68,12 @@ export function showLimitNotification(): void {
     color: white;
     padding: 16px 24px;
     border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: ${CSS_SHADOWS.CONTROL_BUTTON};
     font-family: system-ui, -apple-system, sans-serif;
     font-size: 14px;
     line-height: 1.5;
     max-width: 320px;
-    z-index: 10000;
+    z-index: ${UI_DIMENSIONS_EXTENDED.ZINDEX_NOTIFICATION};
     animation: slideIn 0.3s ease-out;
   `;
   
@@ -124,7 +126,7 @@ export function showLimitNotification(): void {
   asyncManager.execute(
     `limit-notification-remove-${Date.now()}`,
     async (signal) => {
-      await asyncManager.delay(10000, signal);
+      await asyncManager.delay(THRESHOLD.MAX_ERROR_COUNT * TIME.MS_PER_SECOND, signal);
       if (!signal.aborted && notification.parentNode) {
         notification.remove();
       }

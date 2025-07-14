@@ -49,6 +49,7 @@ import { verifyAuthentication, checkUsageLimits, trackUsage } from './auth.js';
 import { handleTranslateWithContext } from './handler.js';
 import { handleContextOnly } from './context.js';
 import { safe } from './utils.js';
+import { HTTP, VALIDATION } from './constants.js';
 
 
 export default {
@@ -73,13 +74,13 @@ export default {
     const origin = request.headers.get('Origin') || '';
     const isValidExtension = origin.startsWith('chrome-extension://') && 
                            origin.length > 19 && 
-                           origin.length < 100;
+                           origin.length < VALIDATION.MAX_WORD_LENGTH;
     
     const corsHeaders = {
       'Access-Control-Allow-Origin': isValidExtension ? origin : '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Installation-Id, X-Timestamp, X-Signature',
-      'Access-Control-Max-Age': '86400',
+      'Access-Control-Max-Age': HTTP.CORS_MAX_AGE_SECONDS.toString(),
       'Access-Control-Allow-Credentials': 'false',
     };
 

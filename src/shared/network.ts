@@ -6,6 +6,7 @@
 import { logger } from './logger';
 import { getErrorHandler } from './utils/error-handler';
 import { safe } from './utils/helpers';
+import { NETWORK, HTTP_STATUS, SAMPLING, PROCESSING_LIMITS } from './constants';
 
 export interface RetryOptions {
   maxRetries?: number;
@@ -17,11 +18,11 @@ export interface RetryOptions {
 }
 
 const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
-  maxRetries: 3,
-  initialDelay: 1000, // 1 second
-  maxDelay: 30000, // 30 seconds
-  backoffFactor: 2,
-  retryableStatuses: [408, 429, 500, 502, 503, 504], // Retryable HTTP status codes
+  maxRetries: NETWORK.MAX_RETRY_COUNT,
+  initialDelay: NETWORK.RETRY_INITIAL_DELAY_MS,
+  maxDelay: NETWORK.RETRY_MAX_DELAY_MS,
+  backoffFactor: NETWORK.RETRY_BACKOFF_MULTIPLIER,
+  retryableStatuses: [HTTP_STATUS.REQUEST_TIMEOUT, HTTP_STATUS.TOO_MANY_REQUESTS, HTTP_STATUS.INTERNAL_SERVER_ERROR, HTTP_STATUS.BAD_GATEWAY, HTTP_STATUS.SERVICE_UNAVAILABLE, HTTP_STATUS.GATEWAY_TIMEOUT], // Retryable HTTP status codes
   onRetry: () => {}
 };
 
@@ -61,7 +62,7 @@ export async function fetchWithRetry(
       
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      const timeoutId = setTimeout(() => controller.abort(), NETWORK.RETRY_MAX_DELAY_MS); // 30s timeout
       
       const response = await fetch(url, {
         ...options,
@@ -119,7 +120,7 @@ export async function fetchWithRetry(
         );
         
         // Add jitter to prevent thundering herd
-        const jitter = delay * 0.1 * Math.random();
+        const jitter = delay * SAMPLING.JITTER_FACTOR * Math.random();
         const finalDelay = delay + jitter;
         
         logger.warn(`Network request failed, retrying in ${Math.round(finalDelay)}ms`, {
@@ -168,7 +169,7 @@ export function isOnline(): boolean {
 /**
  * Wait for the browser to come back online
  */
-export function waitForOnline(timeout: number = 30000): Promise<void> {
+export function waitForOnline(timeout: number = NETWORK.RETRY_MAX_DELAY_MS): Promise<void> {
   return new Promise((resolve, reject) => {
     if (isOnline()) {
       resolve();
@@ -202,7 +203,7 @@ export class RequestBatcher<T> {
   private processing = false;
   
   constructor(
-    private maxConcurrent: number = 3,
+    private maxConcurrent: number = PROCESSING_LIMITS.DEFAULT_MAX_CONCURRENT,
     private delayBetweenBatches: number = 100
   ) {}
   

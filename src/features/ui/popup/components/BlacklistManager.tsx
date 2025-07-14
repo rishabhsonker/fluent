@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { safe, chromeCall, safeSync } from '../../../../shared/utils/helpers';
+import { safe, chromeCall } from '../../../../shared/utils/helpers';
 
 interface CategoryConfig {
   name: string;
@@ -66,16 +66,7 @@ const BlacklistManager: React.FC = () => {
     }, 'Loading blacklist settings');
   }
 
-  async function saveBlacklist(): Promise<void> {
-    await safe(async () => {
-      await chromeCall(() => chrome.storage.sync.set({
-        blacklist_settings: {
-          categories,
-          customSites
-        }
-      }), 'save blacklist settings');
-    }, 'Saving blacklist settings');
-  }
+  // Removed saveBlacklist - each function saves directly
 
   async function addSite(): Promise<void> {
     if (!newSite.trim()) return;

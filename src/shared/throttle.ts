@@ -2,6 +2,7 @@
 'use strict';
 
 import { logger } from './logger';
+import { RATE_LIMITS_EXTENDED, TIME, ARRAY, QUALITY, THRESHOLD, NUMERIC, TIMING } from './constants';
 
 // Type definitions for rate limiting
 export type RateLimitType = 'api' | 'translation' | 'context';
@@ -81,23 +82,23 @@ export class RateLimiter {
     this.limits = {
       // API calls
       api: {
-        perSecond: 2,
-        perMinute: 20,
-        perHour: 200,
-        perDay: 1000
+        perSecond: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_SECOND,
+        perMinute: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_MINUTE,
+        perHour: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR,
+        perDay: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY
       },
       // Translation requests
       translation: {
-        perSecond: 5,
-        perMinute: 50,
-        perHour: 500,
-        perDay: 2000
+        perSecond: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_SECOND * ARRAY.PAIR_SIZE + ARRAY.SINGLE_ITEM,  // 5 = 2*2+1
+        perMinute: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_MINUTE * ARRAY.PAIR_SIZE + THRESHOLD.MAX_ERROR_COUNT,  // 50 = 20*2+10
+        perHour: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR * QUALITY.RATING_PERFECT,  // 500 = 100*5
+        perDay: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY * ARRAY.PAIR_SIZE  // 2000 = 1000*2
       },
       // Context explanations (same as translations since they're now fetched together)
       context: {
-        perMinute: 50,
-        perHour: 500,
-        perDay: 2000
+        perMinute: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_MINUTE * ARRAY.PAIR_SIZE + THRESHOLD.MAX_ERROR_COUNT,  // 50 = 20*2+10
+        perHour: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR * QUALITY.RATING_PERFECT,  // 500 = 100*5
+        perDay: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY * ARRAY.PAIR_SIZE  // 2000 = 1000*2
       }
     };
     
@@ -128,10 +129,10 @@ export class RateLimiter {
     
     // Clean old entries
     const cutoffs: Cutoffs = {
-      second: now - 1000,
-      minute: now - 60000,
-      hour: now - 3600000,
-      day: now - 86400000
+      second: now - TIME.MS_PER_SECOND,
+      minute: now - TIME.MS_PER_MINUTE,
+      hour: now - TIME.MS_PER_HOUR,
+      day: now - TIME.MS_PER_DAY
     };
     
     history = history.filter((timestamp: number) => timestamp > cutoffs.day);
@@ -191,10 +192,10 @@ export class RateLimiter {
     
     const oldestRequest = Math.min(...relevantRequests);
     const periodMs: PeriodMs = {
-      perSecond: 1000,
-      perMinute: 60000,
-      perHour: 3600000,
-      perDay: 86400000
+      perSecond: TIME.MS_PER_SECOND,
+      perMinute: TIME.MS_PER_MINUTE,
+      perHour: TIME.MS_PER_HOUR,
+      perDay: TIME.MS_PER_DAY
     };
     
     return oldestRequest + periodMs[period];
@@ -210,10 +211,10 @@ export class RateLimiter {
     const now = Date.now();
     
     const cutoffs: Cutoffs = {
-      second: now - 1000,
-      minute: now - 60000,
-      hour: now - 3600000,
-      day: now - 86400000
+      second: now - TIME.MS_PER_SECOND,
+      minute: now - TIME.MS_PER_MINUTE,
+      hour: now - TIME.MS_PER_HOUR,
+      day: now - TIME.MS_PER_DAY
     };
     
     const stats: PeriodUsageStats = {};
@@ -224,7 +225,7 @@ export class RateLimiter {
         used: count,
         limit: limit,
         remaining: limit - count,
-        percentage: (count / limit) * 100
+        percentage: (count / limit) * NUMERIC.PERCENTAGE_MAX
       };
     }
     
@@ -241,7 +242,7 @@ export class RateLimiter {
   private startCleanupTimer(): void {
     this.cleanupTimer = setInterval(() => {
       const now = Date.now();
-      const dayAgo = now - 86400000;
+      const dayAgo = now - TIME.MS_PER_DAY;
       
       for (const [key, history] of this.requests.entries()) {
         const cleaned = history.filter(t => t > dayAgo);
@@ -251,7 +252,7 @@ export class RateLimiter {
           this.requests.set(key, cleaned);
         }
       }
-    }, 300000); // Clean every 5 minutes
+    }, TIMING.ERROR_RESET_TIME_MS); // Clean every 5 minutes
   }
 
   // Stop cleanup timer (for testing or shutdown)

@@ -31,7 +31,7 @@
 'use strict';
 
 
-import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS, API_CONFIG } from '../shared/constants';
+import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS, API_CONFIG, TIME, DOMAIN, NUMERIC, RATE_LIMITS_EXTENDED, ARRAY } from '../shared/constants';
 import { config } from '../shared/config';
 import { validator } from '../shared/validator';
 import { logger } from '../shared/logger';
@@ -250,8 +250,13 @@ chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.Messa
       
       return secureResponse;
     }, 
-    'Message handler error',
-    { error: 'Message handling failed', secure: false });
+    'Message handler error');
+    
+    // If error occurred and no result, send error response
+    if (!result) {
+      sendResponse({ error: 'Message handling failed', secure: false });
+      return;
+    }
     
     sendResponse(result);
   })();
@@ -284,16 +289,18 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
     case 'GET_API_KEY':
       return getApiKey();
       
-    case 'SET_API_KEY':
+    case 'SET_API_KEY': {
       const validKey = validator.validateApiKey(request.apiKey);
       if (!validKey && request.apiKey) {
         throw new Error('Invalid API key format');
       }
       return setApiKey(validKey);
+    }
       
-    case 'ENABLE_FOR_SITE':
+    case 'ENABLE_FOR_SITE': {
       const enabled = await contentScriptManager.enableForCurrentTab();
       return { success: enabled };
+    }
       
     case 'GET_DAILY_USAGE':
       return getDailyUsage();
@@ -373,10 +380,6 @@ async function updateSettings(newSettings: Partial<UserSettings>): Promise<{ suc
     [STORAGE_KEYS.USER_SETTINGS]: state.settings
   });
   
-  // Verify save worked
-  const saved = await chrome.storage.sync.get(STORAGE_KEYS.USER_SETTINGS);
-  
-  
   return { success: true };
 }
 
@@ -415,7 +418,7 @@ async function getTranslations(words: string[], language: string): Promise<any> 
   if (!rateCheck.allowed) {
     return {
       translations: {},
-      error: `Translation rate limit exceeded. Try again in ${Math.ceil((rateCheck.resetIn || 0) / 1000)} seconds.`,
+      error: `Translation rate limit exceeded. Try again in ${Math.ceil((rateCheck.resetIn || 0) / TIME.MS_PER_SECOND)} seconds.`,
       rateLimitExceeded: true
     };
   }
@@ -450,7 +453,7 @@ async function getTranslations(words: string[], language: string): Promise<any> 
           });
           return { 
             translations: {}, 
-            error: canTranslate.message || `Daily limit reached! You've used your 100 free translations today.`,
+            error: canTranslate.message || `Daily limit reached! You've used your ${RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY} free translations today.`,
             limitReached: true,
             remaining: canTranslate.remaining
           };
@@ -556,7 +559,7 @@ async function getContext(word: string, translation: string, language: string, s
       logger.info('Daily explanation limit reached', { remaining: canView.remaining });
       return { 
         context: null, 
-        error: canView.message || `Daily limit reached! You've used your 100 explanations today.`,
+        error: canView.message || `Daily limit reached! You've used your ${RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_DAY} explanations today.`,
         limitReached: true,
         remaining: canView.remaining
       };
@@ -583,7 +586,7 @@ async function getContext(word: string, translation: string, language: string, s
 // Clean up old statistics
 async function cleanupOldStats(): Promise<void> {
   const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - 7);
+  cutoffDate.setDate(cutoffDate.getDate() - DOMAIN.STATS_RETENTION_DAYS);
   
   const keys = await chrome.storage.local.get(null);
   const keysToRemove: string[] = [];
@@ -658,12 +661,12 @@ async function getDailyUsage(): Promise<{
   'Error getting daily usage',
   { 
     wordsToday: 0, 
-    wordsLimit: 100, 
+    wordsLimit: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY, 
     explanationsToday: 0,
-    explanationsLimit: 100,
+    explanationsLimit: RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_DAY,
     isPlus: false, 
-    wordsRemaining: 100,
-    explanationsRemaining: 100,
+    wordsRemaining: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY,
+    explanationsRemaining: RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_DAY,
     wordsPercentage: 0,
     explanationsPercentage: 0
   });
@@ -709,9 +712,9 @@ async function generateContext(prompt: string): Promise<{ text?: string; error?:
     
     // Parse the prompt to extract word info (it's in our formatted prompt)
     const wordMatch = prompt.match(/Explain why "([^"]+)" translates to "([^"]+)" in (\w+)/);
-    const word = wordMatch?.[1] || '';
-    const translation = wordMatch?.[2] || '';
-    const language = wordMatch?.[3] || '';
+    const word = wordMatch?.[ARRAY.SECOND_INDEX] || '';
+    const translation = wordMatch?.[ARRAY.THIRD_INDEX] || '';
+    const language = wordMatch?.[ARRAY.FOURTH_INDEX] || '';
     
     // Call Cloudflare Worker with context request - using AsyncManager and rate limiting
     const result = await safe(async () => {
@@ -757,7 +760,7 @@ async function generateContext(prompt: string): Promise<{ text?: string; error?:
     if (error && typeof error === 'object' && 'rateLimitExceeded' in error) {
       const rlError = error as any;
       return {
-        error: `Rate limit exceeded. Try again in ${Math.ceil(rlError.resetIn / 1000)} seconds.`
+        error: `Rate limit exceeded. Try again in ${Math.ceil(rlError.resetIn / TIME.MS_PER_SECOND)} seconds.`
       };
     }
     
@@ -798,8 +801,8 @@ asyncManager.execute(
         state.cacheStats = { hits: 0, misses: 0, size: 0 };
         
         // Clear site settings cache if needed
-        if (action === 'reload' && state.siteSettings.size > 100) {
-          const essentialDomains = Array.from(state.siteSettings.keys()).slice(0, 20);
+        if (action === 'reload' && state.siteSettings.size > NUMERIC.PERCENTAGE_MAX) {
+          const essentialDomains = Array.from(state.siteSettings.keys()).slice(0, DOMAIN.MIN_NODE_LENGTH);
           const essentialSettings = new Map();
           essentialDomains.forEach(domain => {
             essentialSettings.set(domain, state.siteSettings.get(domain));
@@ -812,7 +815,7 @@ asyncManager.execute(
       }
       
       // Wait for next check interval
-      await asyncManager.delay(60000, signal); // Check every minute
+      await asyncManager.delay(TIME.MS_PER_MINUTE, signal); // Check every minute
     }
   },
   { description: 'Performance monitoring', cancelOnNavigation: false }
@@ -884,35 +887,35 @@ async function getRateLimits(): Promise<any> {
     // Calculate time until reset
     const now = Date.now();
     const hourlyResetTime = cached?.lastChecked ? 
-      cached.lastChecked + (60 * 60 * 1000) : now + (60 * 60 * 1000);
+      cached.lastChecked + TIME.MS_PER_HOUR : now + TIME.MS_PER_HOUR;
     const dailyResetTime = cached?.lastChecked ? 
-      cached.lastChecked + (24 * 60 * 60 * 1000) : now + (24 * 60 * 60 * 1000);
+      cached.lastChecked + TIME.MS_PER_DAY : now + TIME.MS_PER_DAY;
     
     const limits = {
       translationLimits: {
-        hourlyRemaining: cached?.translationHourlyRemaining ?? 100,
-        hourlyLimit: 100,
-        dailyRemaining: cached?.translationDailyRemaining ?? 1000,
-        dailyLimit: 1000
+        hourlyRemaining: cached?.translationHourlyRemaining ?? RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR,
+        hourlyLimit: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR,
+        dailyRemaining: cached?.translationDailyRemaining ?? RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY,
+        dailyLimit: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY
       },
       aiLimits: {
-        hourlyRemaining: cached?.aiHourlyRemaining ?? 10,
-        hourlyLimit: 10,
-        dailyRemaining: cached?.aiDailyRemaining ?? 100,
-        dailyLimit: 100
+        hourlyRemaining: cached?.aiHourlyRemaining ?? RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_HOUR,
+        hourlyLimit: RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_HOUR,
+        dailyRemaining: cached?.aiDailyRemaining ?? RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_DAY,
+        dailyLimit: RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_DAY
       },
       nextResetIn: {
-        hourly: Math.max(0, Math.floor((hourlyResetTime - now) / (60 * 1000))), // minutes
-        daily: Math.max(0, Math.floor((dailyResetTime - now) / (60 * 60 * 1000))) // hours
+        hourly: Math.max(0, Math.floor((hourlyResetTime - now) / TIME.MS_PER_MINUTE)), // minutes
+        daily: Math.max(0, Math.floor((dailyResetTime - now) / TIME.MS_PER_HOUR)) // hours
       }
     };
     
     return { limits };
   }, 'Failed to get rate limits', {
     limits: {
-      translationLimits: { hourlyRemaining: 100, hourlyLimit: 100, dailyRemaining: 1000, dailyLimit: 1000 },
-      aiLimits: { hourlyRemaining: 10, hourlyLimit: 10, dailyRemaining: 100, dailyLimit: 100 },
-      nextResetIn: { hourly: 60, daily: 24 }
+      translationLimits: { hourlyRemaining: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR, hourlyLimit: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR, dailyRemaining: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY, dailyLimit: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY },
+      aiLimits: { hourlyRemaining: RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_HOUR, hourlyLimit: RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_HOUR, dailyRemaining: RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_DAY, dailyLimit: RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_DAY },
+      nextResetIn: { hourly: TIME.MINUTES_PER_HOUR, daily: TIME.HOURS_PER_DAY }
     }
   });
 }
@@ -951,12 +954,3 @@ chrome.runtime.onSuspend?.addListener(() => {
   
   logger.info('[Service Worker] Cleanup complete');
 });
-
-// Export for testing
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    handleMessage,
-    getTranslations,
-    getCacheStats
-  };
-}

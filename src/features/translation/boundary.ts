@@ -8,19 +8,20 @@
 import { logger } from '../../shared/logger';
 import { getErrorHandler } from '../../shared/utils/error-handler';
 import { safe, safeSync } from '../../shared/utils/helpers';
+import { UI_DIMENSIONS_EXTENDED, DOMAIN, TIME, ANIMATION } from '../../shared/constants';
 
 interface ErrorBoundaryOptions {
   maxErrors?: number;
   resetDelay?: number;
-  onError?: (error: Error, context: string) => void;
+  onError?: (_error: Error, _context: string) => void;
   onDisable?: () => void;
 }
 
 export class ContentScriptErrorBoundary {
   private static errorCount = 0;
-  private static readonly MAX_ERRORS = 3;
-  private static readonly RESET_DELAY = 60000; // 1 minute
-  private static resetTimer: NodeJS.Timeout | null = null;
+  private static readonly MAX_ERRORS = DOMAIN.MIN_TEXT_LENGTH;
+  private static readonly RESET_DELAY = TIME.MS_PER_MINUTE; // 1 minute
+  private static resetTimer: ReturnType<typeof setTimeout> | null = null;
   private static isDisabled = false;
 
   /**
@@ -183,12 +184,12 @@ export class ContentScriptErrorBoundary {
         right: 20px;
         background: #ef4444;
         color: white;
-        padding: 16px 24px;
+        padding: ${UI_DIMENSIONS_EXTENDED.TOOLTIP_PADDING_VERTICAL_PX}px ${UI_DIMENSIONS_EXTENDED.TOOLTIP_PADDING_HORIZONTAL_PX}px;
         border-radius: 8px;
         font-family: system-ui, -apple-system, sans-serif;
         font-size: 14px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        z-index: 2147483647;
+        z-index: ${UI_DIMENSIONS_EXTENDED.ZINDEX_MAX};
         max-width: 400px;
         animation: fluent-slide-in 0.3s ease-out;
       `;
@@ -222,9 +223,9 @@ export class ContentScriptErrorBoundary {
         font-size: 24px;
         cursor: pointer;
         padding: 0;
-        width: 24px;
-        height: 24px;
-        line-height: 24px;
+        width: ${UI_DIMENSIONS_EXTENDED.ICON_SIZE_SMALL_PX}px;
+        height: ${UI_DIMENSIONS_EXTENDED.ICON_SIZE_SMALL_PX}px;
+        line-height: ${UI_DIMENSIONS_EXTENDED.ICON_SIZE_SMALL_PX}px;
         text-align: center;
       `;
       closeBtn.onclick = () => notification.remove();
@@ -235,8 +236,8 @@ export class ContentScriptErrorBoundary {
       // Auto-remove after 10 seconds
       setTimeout(() => {
         notification.style.animation = 'fluent-slide-in 0.3s ease-out reverse';
-        setTimeout(() => notification.remove(), 300);
-      }, 10000);
+        setTimeout(() => notification.remove(), ANIMATION.SLIDE_DURATION_MS);
+      }, DOMAIN.MAX_CONSECUTIVE_ERRORS * DOMAIN.BACKOFF_FACTOR * TIME.MS_PER_SECOND);
     }, 'Show error notification');
   }
 

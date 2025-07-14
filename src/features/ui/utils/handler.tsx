@@ -5,7 +5,7 @@
 
 import { getErrorHandler } from '../../../shared/utils/error-handler';
 import type { ErrorContext } from '../../../shared/utils/error-handler';
-import { safe } from '../../../shared/utils/helpers';
+// safe import removed - not used
 
 interface UIErrorContext extends ErrorContext {
   showToast?: boolean;
@@ -13,7 +13,7 @@ interface UIErrorContext extends ErrorContext {
 }
 
 interface UIErrorHandlerOptions {
-  onError?: (error: Error) => void;
+  onError?: (_error: Error) => void;
   showToast?: boolean;
 }
 

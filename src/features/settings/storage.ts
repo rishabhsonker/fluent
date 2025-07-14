@@ -1,10 +1,9 @@
 // Storage.ts - Chrome storage wrapper with type safety
 'use strict';
 
-import { STORAGE_KEYS, DEFAULT_SETTINGS, RATE_LIMITS } from '../../shared/constants';
+import { STORAGE_KEYS, DEFAULT_SETTINGS, RATE_LIMITS, TIME, NUMERIC, CHROME, STORAGE_SIZE, DOMAIN, ANIMATION, NETWORK, CACHE_LIMITS } from '../../shared/constants';
 import { logger } from '../../shared/logger';
 import { safe, safeSync, chromeCall } from '../../shared/utils/helpers';
-import { getErrorHandler } from '../../shared/utils/error-handler';
 import type {
   UserSettings,
   SiteSettings,
@@ -16,7 +15,7 @@ import type {
 } from '../../shared/types';
 import type { SpacedRepetitionWordData } from '../learning/srs';
 
-type StorageListener<T> = (value: T) => void;
+type StorageListener<T> = (_: T) => void;
 
 interface StorageUsage {
   used: number;
@@ -48,9 +47,9 @@ class StorageManager {
   private writeTimer: NodeJS.Timeout | null;
   private retryTimer: NodeJS.Timeout | null;
   private failedWrites: Map<string, { value: any; retries: number; lastAttempt: number }>;
-  private readonly BATCH_DELAY = 100; // ms
-  private readonly MAX_RETRIES = 3;
-  private readonly RETRY_DELAYS = [1000, 2000, 4000]; // Exponential backoff
+  private readonly BATCH_DELAY = ANIMATION.THROTTLE_DELAY_MS; // ms
+  private readonly MAX_RETRIES = NETWORK.MAX_RETRY_COUNT;
+  private readonly RETRY_DELAYS = [TIME.MS_PER_SECOND, DOMAIN.BACKOFF_FACTOR * TIME.MS_PER_SECOND, DOMAIN.BACKOFF_FACTOR * DOMAIN.BACKOFF_FACTOR * TIME.MS_PER_SECOND]; // Exponential backoff
 
   constructor() {
     this.cache = new Map();
@@ -228,7 +227,7 @@ class StorageManager {
     let nextRetryTime = Infinity;
     const now = Date.now();
     
-    for (const [key, failure] of this.failedWrites) {
+    for (const [, failure] of this.failedWrites) {
       const retryDelay = this.RETRY_DELAYS[Math.min(failure.retries, this.RETRY_DELAYS.length - 1)];
       const nextAttempt = failure.lastAttempt + retryDelay;
       nextRetryTime = Math.min(nextRetryTime, nextAttempt);
@@ -343,7 +342,7 @@ class StorageManager {
   }
 
   // Notify user of persistent write failure
-  private notifyWriteFailure(key: string, value: any): void {
+  private notifyWriteFailure(key: string, _: any): void {
     // Send message to popup/content scripts about sync failure
     chrome.runtime.sendMessage({
       type: 'STORAGE_SYNC_FAILED',
@@ -472,8 +471,8 @@ class StorageManager {
         ]);
         
         // Get quotas
-        const localQuota = chrome.storage.local.QUOTA_BYTES || 10485760; // 10MB default
-        const syncQuota = chrome.storage.sync.QUOTA_BYTES || 102400; // 100KB default
+        const localQuota = chrome.storage.local.QUOTA_BYTES || STORAGE_SIZE.MAX_CACHE_SIZE_BYTES; // 10MB default
+        const syncQuota = chrome.storage.sync.QUOTA_BYTES || STORAGE_SIZE.CHUNK_SIZE_BYTES; // 100KB default
         
         const totalUsed = localBytes + syncBytes;
         const totalQuota = localQuota + syncQuota;
@@ -481,7 +480,7 @@ class StorageManager {
         return {
           used: totalUsed,
           total: totalQuota,
-          percentage: (totalUsed / totalQuota) * 100
+          percentage: (totalUsed / totalQuota) * NUMERIC.PERCENTAGE_MAX
         };
       },
       'storage.getUsage',
@@ -655,7 +654,7 @@ export class FluentStorage {
     
     // Limit cache size (keep last 10,000 entries)
     const entries = Object.entries(cache.translations);
-    if (entries.length > 10000) {
+    if (entries.length > CACHE_LIMITS.STORAGE_CACHE_MAX_ENTRIES * DOMAIN.BACKOFF_FACTOR) {
       // Sort by timestamp and keep newest
       const sortedKeys = Object.keys(cache.translations).sort((a, b) => 
         (cache.timestamps?.[b] || 0) - (cache.timestamps?.[a] || 0)
@@ -663,7 +662,7 @@ export class FluentStorage {
       const newTranslations: Translation = {};
       const newTimestamps: { [key: string]: number } = {};
       
-      sortedKeys.slice(0, 9000).forEach(key => {
+      sortedKeys.slice(0, Math.floor(CACHE_LIMITS.STORAGE_CACHE_MAX_ENTRIES * DOMAIN.BACKOFF_FACTOR * CHROME.STORAGE_WARNING_THRESHOLD)).forEach(key => {
         newTranslations[key] = cache.translations[key];
         if (cache.timestamps?.[key]) {
           newTimestamps[key] = cache.timestamps[key];
@@ -701,8 +700,8 @@ export class FluentStorage {
     
     // Keep only last 30 days
     const dates = Object.keys(stats).sort();
-    if (dates.length > 30) {
-      dates.slice(0, -30).forEach(date => delete stats[date]);
+    if (dates.length > DOMAIN.STATS_MONTH_DAYS) {
+      dates.slice(0, -DOMAIN.STATS_MONTH_DAYS).forEach(date => delete stats[date]);
     }
     
     return await this.storage.set(STORAGE_KEYS.DAILY_STATS, stats);
@@ -714,7 +713,7 @@ export class FluentStorage {
       async () => {
         // Clean up old word progress (not reviewed in 90 days)
         const progress = await this.storage.get<Record<string, WordProgress>>(STORAGE_KEYS.WORD_PROGRESS, {}) || {};
-        const cutoff = Date.now() - (90 * 24 * 60 * 60 * 1000);
+        const cutoff = Date.now() - (DOMAIN.STATS_CLEANUP_DAYS * TIME.MS_PER_DAY);
         
         if (progress) {
           for (const [key, data] of Object.entries(progress)) {
@@ -728,7 +727,7 @@ export class FluentStorage {
         
         // Clean up old translations (not used in 30 days)
         const cache = await this.storage.get<StorageCache>(STORAGE_KEYS.TRANSLATION_CACHE, { translations: {}, lastUpdated: Date.now() }) || { translations: {}, lastUpdated: Date.now() };
-        const cacheCutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        const cacheCutoff = Date.now() - (DOMAIN.STATS_MONTH_DAYS * TIME.MS_PER_DAY);
         
         if (cache.timestamps) {
           for (const [key, timestamp] of Object.entries(cache.timestamps)) {
@@ -887,8 +886,8 @@ export class FluentStorage {
     const usage = await this.getDailyUsage();
     const wordsLimit = usage.isPlus ? Infinity : RATE_LIMITS.DAILY_WORDS;
     const explanationsLimit = usage.isPlus ? Infinity : RATE_LIMITS.DAILY_EXPLANATIONS;
-    const wordsPercentage = usage.isPlus ? 0 : (usage.wordsTranslated / RATE_LIMITS.DAILY_WORDS) * 100;
-    const explanationsPercentage = usage.isPlus ? 0 : (usage.explanationsViewed / RATE_LIMITS.DAILY_EXPLANATIONS) * 100;
+    const wordsPercentage = usage.isPlus ? 0 : (usage.wordsTranslated / RATE_LIMITS.DAILY_WORDS) * NUMERIC.PERCENTAGE_MAX;
+    const explanationsPercentage = usage.isPlus ? 0 : (usage.explanationsViewed / RATE_LIMITS.DAILY_EXPLANATIONS) * NUMERIC.PERCENTAGE_MAX;
 
     return {
       wordsToday: usage.wordsTranslated,

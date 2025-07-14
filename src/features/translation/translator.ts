@@ -34,17 +34,15 @@
 
 'use strict';
 
-import { API_CONFIG, STORAGE_KEYS, CACHE_LIMITS, SUPPORTED_LANGUAGES } from '../../shared/constants';
+import { API_CONFIG, STORAGE_KEYS, CACHE_LIMITS, SUPPORTED_LANGUAGES, NETWORK, TIME, NUMERIC, RATE_LIMITS_EXTENDED, PROCESSING, ARRAY, CRYPTO } from '../../shared/constants';
 import { storage } from '../settings/storage';
 import { validator } from '../../shared/validator';
 import { rateLimiter } from '../../shared/throttle';
 import { logger } from '../../shared/logger';
 import { costGuard } from '../../shared/cost';
-import { secureCrypto } from '../auth/crypto';
-import { InstallationAuth } from '../auth/auth';
 import { offlineManager } from '../../shared/offline';
 import { translationCache } from '../../shared/cache';
-import { fetchWithRetry, NetworkError } from '../../shared/network';
+import { fetchWithRetry } from '../../shared/network';
 import { safe, chromeCall } from '../../shared/utils/helpers';
 import { getErrorHandler } from '../../shared/utils/error-handler';
 import type { 
@@ -80,7 +78,7 @@ export class SimpleTranslator {
     // Set up periodic cleanup
     setInterval(() => {
       translationCache.cleanup();
-    }, 5 * 60 * 1000); // Every 5 minutes
+    }, NUMERIC.MINUTES_SHORT * TIME.MS_PER_MINUTE); // Every 5 minutes
   }
   
   // Load recent translations from storage
@@ -94,7 +92,7 @@ export class SimpleTranslator {
     if (stored?.translations) {
       // Load recent translations into memory cache
       const entries = Object.entries(stored.translations);
-      const recentEntries = entries.slice(-500); // Load last 500
+      const recentEntries = entries.slice(-PROCESSING.MAX_BATCH_SIZE * NUMERIC.MINUTES_SHORT); // Load last 500
       
       recentEntries.forEach(([key, value]) => {
         const [language, ...wordParts] = key.split(':');
@@ -163,7 +161,7 @@ export class SimpleTranslator {
             await this.updateCache(cacheKey, translation);
           }
         }, 'translator.translate');
-      } catch (error) {
+      } catch {
         // Return partial results on error
         return {
           translations,
@@ -225,7 +223,7 @@ export class SimpleTranslator {
       if (keys.length > CACHE_LIMITS.STORAGE_CACHE_MAX_ENTRIES) {
         // Keep only recent entries
         const newTranslations: Translation = {};
-        keys.slice(-4000).forEach(k => {
+        keys.slice(-(CACHE_LIMITS.STORAGE_CACHE_MAX_ENTRIES - CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES)).forEach(k => {
           newTranslations[k] = stored.translations[k];
         });
         stored.translations = newTranslations;
@@ -243,13 +241,13 @@ export class SimpleTranslator {
     apiKey?: string
   ): Promise<Translation> {
     // Check cost limits
-    const estimatedChars = words.join(' ').length * 2;
+    const estimatedChars = words.join(' ').length * ARRAY.PAIR_SIZE;
     if (!apiKey) {
       await costGuard.checkCost('translation', estimatedChars);
     }
     
     // Apply rate limiting
-    const identifier = apiKey ? `byok:${apiKey.substring(0, 8)}` : 'free';
+    const identifier = apiKey ? `byok:${apiKey.substring(ARRAY.FIRST_INDEX, CRYPTO.SALT_LENGTH / ARRAY.PAIR_SIZE)}` : 'free';
     
     return await rateLimiter.withRateLimit('translation', identifier, async () => {
       // No mock mode in production
@@ -281,7 +279,7 @@ export class SimpleTranslator {
           })
         },
         {
-          maxRetries: 3,
+          maxRetries: NETWORK.MAX_RETRY_COUNT,
           onRetry: (attempt, error) => {
             logger.warn(`Translation retry attempt ${attempt}`, { error: error.message });
           }
@@ -333,10 +331,10 @@ export class SimpleTranslator {
       // Store rate limit info from response headers or metadata
       if (data.metadata?.limits || response.headers.get('X-RateLimit-Remaining-Hourly')) {
         const rateLimitInfo = {
-          translationHourlyRemaining: parseInt(response.headers.get('X-RateLimit-Remaining-Hourly') || '100'),
-          translationDailyRemaining: parseInt(response.headers.get('X-RateLimit-Remaining-Daily') || '1000'),
+          translationHourlyRemaining: parseInt(response.headers.get('X-RateLimit-Remaining-Hourly') || String(RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR)),
+          translationDailyRemaining: parseInt(response.headers.get('X-RateLimit-Remaining-Daily') || String(RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY)),
           aiHourlyRemaining: parseInt(response.headers.get('X-AI-RateLimit-Remaining-Hourly') || '10'),
-          aiDailyRemaining: parseInt(response.headers.get('X-AI-RateLimit-Remaining-Daily') || '100'),
+          aiDailyRemaining: parseInt(response.headers.get('X-AI-RateLimit-Remaining-Daily') || String(RATE_LIMITS_EXTENDED.EXPLANATIONS_PER_DAY)),
           lastChecked: Date.now()
         };
         
@@ -418,7 +416,7 @@ export class SimpleTranslator {
     
     return await rateLimiter.withRateLimit('context', identifier, async () => {
       // Check cost limits for AI context
-      await costGuard.checkCost('context', 100); // Estimate 100 chars for context
+      await costGuard.checkCost('context', NUMERIC.PERCENTAGE_MAX); // Estimate 100 chars for context
       
       return await safe(async () => {
         // Use proper installation-based authentication
@@ -445,7 +443,7 @@ export class SimpleTranslator {
             body: JSON.stringify(requestBody)
           },
           {
-            maxRetries: 2,
+            maxRetries: ARRAY.PAIR_SIZE,
             onRetry: (attempt, error) => {
               logger.warn(`Context retry attempt ${attempt}`, { error: error.message });
             }
@@ -464,7 +462,7 @@ export class SimpleTranslator {
         
         if (context) {
           // Record cost
-          costGuard.recordUsage('context', 100);
+          costGuard.recordUsage('context', NUMERIC.PERCENTAGE_MAX);
           
           // Cache the context
           translationCache.setContext(word, validLanguage, context);

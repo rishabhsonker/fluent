@@ -2,10 +2,8 @@
 'use strict';
 
 import { storage } from './storage';
-import { getErrorHandler } from '../../shared/utils/error-handler';
-import { safeSync, safe } from '../../shared/utils/helpers';
-
-const errorHandler = getErrorHandler();
+import { safeSync } from '../../shared/utils/helpers';
+import { CACHE_LIMITS } from '../../shared/constants';
 
 // Default blacklisted patterns - sensitive sites that should never be translated
 const DEFAULT_BLACKLIST: RegExp[] = [
@@ -346,7 +344,7 @@ export class BlacklistManager {
       }
       
       // Cache the result (limit cache size)
-      if (this.urlCache.size > 1000) {
+      if (this.urlCache.size > CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES) {
         // Clear oldest entries
         const firstKey = this.urlCache.keys().next().value;
         if (firstKey !== undefined) {
