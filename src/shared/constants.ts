@@ -80,9 +80,7 @@ interface WordConfig {
   MIN_PARAGRAPH_LENGTH: number;
 }
 
-interface TranslationDictionary {
-  [key: string]: string;
-}
+// Removed unused TranslationDictionary interface
 
 
 interface ApiConfig {

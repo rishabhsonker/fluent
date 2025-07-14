@@ -21,7 +21,7 @@ export async function processInChunks<T>(
     maxTime = PROCESSING.CHUNK_TIMEOUT_MS
   } = options;
   
-  const startTime = performance.now();
+  // const startTime = performance.now(); // Removed - not used
   
   for (let i = 0; i < items.length; i += chunkSize) {
     const chunkStart = performance.now();

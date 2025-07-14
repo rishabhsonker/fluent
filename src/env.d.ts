@@ -3,7 +3,7 @@
 /**
  * Environment variables type definitions for Fluent Chrome Extension
  */
-interface ImportMetaEnv {
+declare interface ImportMetaEnv {
   // Custom environment variables
   readonly VITE_FLUENT_DEBUG?: string
   

@@ -13,7 +13,7 @@ import { UI_DIMENSIONS_EXTENDED, DOMAIN, TIME, ANIMATION } from '../../shared/co
 interface ErrorBoundaryOptions {
   maxErrors?: number;
   resetDelay?: number;
-  onError?: (error: Error, context: string) => void;
+  onError?: (_error: Error, _context: string) => void;
   onDisable?: () => void;
 }
 

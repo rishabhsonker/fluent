@@ -775,7 +775,7 @@ export class Tooltip {
 
     // Determine vertical position based on available space
     let top: number;
-    let tooltipAbove = true;
+    // Removed tooltipAbove variable - was assigned but never used
     
     const spaceAbove = targetRect.top;
     const spaceBelow = viewport.height - targetRect.bottom;
@@ -790,7 +790,7 @@ export class Tooltip {
     } else if (spaceBelow >= tooltipHeight + CSS_DIMENSIONS.ICON_MEDIUM) {
       // Place below with more spacing
       top = targetRect.bottom + scrollTop + CSS_DIMENSIONS.TOOLTIP_ARROW_SIZE;
-      tooltipAbove = false;
+      // tooltipAbove assignment removed
       this.element.classList.remove('top');
       this.element.classList.add('bottom');
     } else {

@@ -3,7 +3,7 @@
  */
 
 import { logger } from './logger';
-import { storage } from '../features/settings/storage';
+// storage import removed - not used
 import { safe, chromeCall } from './utils/helpers';
 import type { Translation, LanguageCode } from './types';
 import { CACHE_LIMITS, TIME, ARRAY } from './constants';
@@ -132,7 +132,7 @@ export class OfflineManager {
   /**
    * Load word frequency list for a language
    */
-  private async loadWordFrequencyList(language: LanguageCode): Promise<string[]> {
+  private async loadWordFrequencyList(_language: LanguageCode): Promise<string[]> {
     const result = await safe(
       async () => {
         // Try to load from bundled data
@@ -163,7 +163,7 @@ export class OfflineManager {
       list.forEach(word => allWords.add(word));
     });
 
-    const words = Array.from(allWords).slice(0, this.MAX_OFFLINE_WORDS);
+    // const words = Array.from(allWords).slice(0, this.MAX_OFFLINE_WORDS); // Removed - not used
     
     // For now, use hardcoded translations for most common words
     // In production, this would fetch from the API during off-peak hours

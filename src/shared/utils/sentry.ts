@@ -85,10 +85,10 @@ export async function initSentry(context: ExtensionContext) {
     const handler = await sentryInitPromise;
     sentryInitialized = true;
     return handler;
-  } catch (error) {
+  } catch (_error) {
     // Reset on failure to allow retry
     sentryInitPromise = null;
-    throw error;
+    throw _error;
   }
 }
 
@@ -105,7 +105,7 @@ async function initSentryInternal(context: ExtensionContext) {
         // Try dynamic import as fallback
         Sentry = await import(/* webpackIgnore: true */ '@sentry/browser').catch(() => null);
       }
-    } catch (error) {
+    } catch (_error) {
       console.warn('Sentry not available, continuing without error tracking');
       return initErrorHandler();
     }
@@ -184,7 +184,7 @@ async function initSentryInternal(context: ExtensionContext) {
       },
       
       // Privacy-focused settings with comprehensive controls
-      beforeSend(event: SentryEvent, hint: any) {
+      beforeSend(event: SentryEvent, _hint: any) {
         // Check privacy settings
         const privacyLevel = configData.privacyLevel || 'standard';
         
@@ -308,8 +308,8 @@ async function initSentryInternal(context: ExtensionContext) {
     };
     
     return initErrorHandler(sentryHub);
-  } catch (error) {
-    console.error('Failed to initialize Sentry:', error);
+  } catch (_error) {
+    console.error('Failed to initialize Sentry:', _error);
     // Return error handler without Sentry
     return initErrorHandler();
   }

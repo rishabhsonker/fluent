@@ -20,7 +20,7 @@
  * - BORDERS: Radius values, widths
  */
 
-import { NUMERIC, DOMAIN } from '../constants';
+import { NUMERIC } from '../constants';
 
 // Color constants with opacity variations
 export const CSS_COLORS = {

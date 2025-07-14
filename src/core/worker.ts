@@ -234,7 +234,7 @@ async function loadSettings(): Promise<void> {
 }
 
 // Secure message handling
-chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.MessageSender, sendResponse: () => void) => {
+chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
   
   
   // Handle async responses
@@ -250,8 +250,13 @@ chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.Messa
       
       return secureResponse;
     }, 
-    'Message handler error',
-    { error: 'Message handling failed', secure: false });
+    'Message handler error');
+    
+    // If error occurred and no result, send error response
+    if (!result) {
+      sendResponse({ error: 'Message handling failed', secure: false });
+      return;
+    }
     
     sendResponse(result);
   })();

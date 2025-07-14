@@ -65,6 +65,7 @@ export const VALIDATION_PATTERNS = {
   GERMAN_CHARS: /[äöüßÄÖÜẞ]/,
   
   // Control characters and zero-width characters to block
+  // eslint-disable-next-line no-control-regex
   CONTROL_CHARS: /[\x00-\x1F\x7F-\x9F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/,
 } as const;
 

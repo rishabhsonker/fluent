@@ -35,20 +35,16 @@
 'use strict';
 
 import type { UserSettings, LanguageCode, MessageRequest, MessageResponse } from '../../../shared/types';
-import { logger } from '../../../shared/logger';
+// logger import removed - not used
 import { ComponentAsyncManager } from '../../../shared/async';
 import { safe, safeSync } from '../../../shared/utils/helpers';
-import { TIME, NUMERIC, DOMAIN, ARRAY, UI_DIMENSIONS_EXTENDED } from '../../../shared/constants';
+import { TIME, NUMERIC, ARRAY, UI_DIMENSIONS_EXTENDED } from '../../../shared/constants';
 
 interface PageControlSettings extends Partial<UserSettings> {
   targetLanguage: LanguageCode;
 }
 
-interface LanguageButton {
-  lang: LanguageCode;
-  flag: string;
-  name: string;
-}
+// Removed unused LanguageButton interface
 
 export class PageControl {
   private settings: PageControlSettings;
@@ -530,7 +526,7 @@ export class PageControl {
     this.updatePositionStyle();
   }
 
-  private endDrag(e: MouseEvent): void {
+  private endDrag(_e: MouseEvent): void {
     if (this.mouseMoveHandler) {
       document.removeEventListener('mousemove', this.mouseMoveHandler);
       this.mouseMoveHandler = null;

@@ -70,6 +70,12 @@ export default [
         ignoreReadonlyClassProperties: true,
         ignoreTypeIndexes: true
       }],
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', {
+        'varsIgnorePattern': '^_',
+        'argsIgnorePattern': '^_',
+        'caughtErrorsIgnorePattern': '^_'
+      }],
       'react/jsx-uses-react': 'error',
       'react/jsx-uses-vars': 'error'
     },

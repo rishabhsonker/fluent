@@ -10,7 +10,7 @@
  */
 
 import { logger } from './logger';
-import { PROCESSING, MONITORING, TIME, PROCESSING_LIMITS, ARRAY } from './constants';
+import { PROCESSING, MONITORING, TIME, PROCESSING_LIMITS } from './constants';
 
 interface AsyncOperation {
   id: string;
@@ -142,7 +142,7 @@ export class AsyncManager {
     
     try {
       await operation.promise;
-    } catch (error) {
+    } catch (_error) {
       // Expected - operation was cancelled
     }
     
@@ -202,7 +202,7 @@ export class AsyncManager {
     
     try {
       return await operation.promise;
-    } catch (error) {
+    } catch (_error) {
       // Operation was cancelled or failed
       return null;
     }

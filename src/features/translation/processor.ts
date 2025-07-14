@@ -248,10 +248,10 @@ export function createTextProcessor(config: ProcessorConfig): TextProcessor {
 declare global {
   interface Window {
     requestIdleCallback(
-      callback: (deadline: IdleDeadline) => void,
+      callback: (_deadline: IdleDeadline) => void,
       options?: { timeout: number }
     ): number;
-    cancelIdleCallback(id: number): void;
+    cancelIdleCallback(_id: number): void;
   }
 }
 

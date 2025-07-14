@@ -187,8 +187,8 @@ export class MemoryMonitor {
         }
         
         // Method 4: Create and destroy large objects to trigger GC
-        let dummy = new Array(PROCESSING_LIMITS.LARGE_ARRAY_SIZE).fill(0);
-        dummy = null as any;
+        // Force garbage collection by creating and releasing memory
+        new Array(PROCESSING_LIMITS.LARGE_ARRAY_SIZE).fill(0);
         
         logger.info('[Memory] Memory cleanup attempted');
       },
