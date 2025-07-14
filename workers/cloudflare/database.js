@@ -5,6 +5,7 @@
 
 import { logInfo, logError } from './logger.js';
 import { safe } from './utils.js';
+import { DATABASE } from './constants.js';
 
 /**
  * Installation operations
@@ -176,10 +177,7 @@ export const UsageDB = {
    * @returns {Promise<Object>} Limit check result
    */
   async checkLimits(db, userId, plan, type) {
-    const limits = {
-      free: { translations: 100, hints: 20 },
-      plus: { translations: 1000, hints: 500 }
-    };
+    const limits = DATABASE.PLANS;
     
     const usage = await this.getTodayUsage(db, userId);
     const userLimits = limits[plan] || limits.free;

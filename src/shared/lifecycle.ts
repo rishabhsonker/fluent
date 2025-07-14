@@ -5,6 +5,7 @@
 
 import { logger } from './logger';
 import { safe, chromeCall } from './utils/helpers';
+import { MONITORING, TIME } from './constants';
 
 interface LifecycleState {
   lastActivity: number;
@@ -33,10 +34,10 @@ class ServiceWorkerLifecycle {
   private alarmName = 'fluent_keepalive';
   
   // Chrome's limits
-  private readonly INACTIVITY_TIMEOUT = 30000; // 30 seconds
-  private readonly MAX_LIFETIME = 5 * 60 * 1000; // 5 minutes
-  private readonly KEEPALIVE_INTERVAL = 20000; // 20 seconds (under 30s limit)
-  private readonly ALARM_PERIOD = 1; // 1 minute minimum for alarms
+  private readonly INACTIVITY_TIMEOUT = MONITORING.CHROME_INACTIVITY_LIMIT_MS; // 30 seconds - Chrome's hard limit
+  private readonly MAX_LIFETIME = MONITORING.MAX_LIFETIME_MS;
+  private readonly KEEPALIVE_INTERVAL = MONITORING.CHROME_KEEPALIVE_INTERVAL_MS; // 20 seconds (under 30s limit)
+  private readonly ALARM_PERIOD = MONITORING.CHROME_ALARM_MIN_PERIOD_MINUTES; // 1 minute minimum for alarms
 
   constructor() {
     this.setupEventListeners();
@@ -138,7 +139,7 @@ class ServiceWorkerLifecycle {
     this.keepAliveInterval = setInterval(() => {
       // Check if we're approaching the max lifetime
       const runtime = Date.now() - performance.timeOrigin;
-      if (runtime > this.MAX_LIFETIME - 60000) { // 1 minute before max
+      if (runtime > this.MAX_LIFETIME - TIME.MS_PER_MINUTE) { // 1 minute before max
         logger.warn('[Lifecycle] Approaching max lifetime, preparing for shutdown');
         this.prepareForShutdown();
         return;
@@ -275,7 +276,7 @@ class ServiceWorkerLifecycle {
         const savedState = stored[this.stateKey];
         
         // Check if state is recent (within 5 minutes)
-        if (Date.now() - savedState.timestamp < 5 * 60 * 1000) {
+        if (Date.now() - savedState.timestamp < MONITORING.STATE_RESTORE_TIMEOUT_MS) {
           this.state = {
             lastActivity: savedState.lastActivity,
             activeOperations: new Set(savedState.activeOperations),

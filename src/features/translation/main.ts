@@ -38,6 +38,8 @@ import { ComponentAsyncManager } from '../../shared/async';
 import { rateLimiter } from '../../shared/throttle';
 import { safe, sendMessage } from '../../shared/utils/helpers';
 import type { UserSettings, LanguageCode } from '../../shared/types';
+import { TIME, NUMERIC, RATE_LIMITS, PROCESSING, ANIMATION, ARRAY } from '../../shared/constants';
+import { CSS_SHADOWS } from '../../shared/constants/css-variables';
 import type { Tooltip } from '../ui/tooltip/tooltip';
 import type { PageControl } from '../ui/widget/widget';
 import type { WordReplacer } from './replacer';
@@ -313,7 +315,7 @@ interface ContentConfig {
         if (actualResult.error) {
           logger.warn('Translation error:', actualResult.error);
           // Show notification to user if daily limit reached
-          if (actualResult.error.includes('daily limit') || actualResult.error.includes('100 words')) {
+          if (actualResult.error.includes('daily limit') || actualResult.error.includes(`${RATE_LIMITS.DAILY_WORDS} words`)) {
             showLimitNotification();
           } else if (actualResult.error.includes('not properly initialized')) {
             showErrorNotification('Extension needs to be reinitialized. Please reload the extension.');
@@ -375,7 +377,7 @@ interface ContentConfig {
       
       // Report performance
       const processingTime = performance.now() - startTime;
-      logger.debug(`Processed in ${processingTime.toFixed(2)}ms`);
+      logger.debug(`Processed in ${processingTime.toFixed(NUMERIC.DECIMAL_PRECISION_2)}ms`);
     }
   }
 
@@ -423,7 +425,7 @@ interface ContentConfig {
             font-size: 14px !important;
             min-width: 280px !important;
             max-width: 360px !important;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+            box-shadow: ${CSS_SHADOWS.TOOLTIP} !important;
             left: var(--tooltip-left, 0) !important;
             top: var(--tooltip-top, 0) !important;
           }
@@ -529,7 +531,7 @@ interface ContentConfig {
       async (signal) => {
         if ('requestIdleCallback' in window) {
           await new Promise<void>((resolve) => {
-            requestIdleCallback(() => resolve(), { timeout: 100 });
+            requestIdleCallback(() => resolve(), { timeout: NUMERIC.PERCENTAGE_MAX });
           });
           // Check if cancelled
           if (signal.aborted) return;
@@ -552,7 +554,7 @@ interface ContentConfig {
     mutationObserver = new MutationObserver((mutations) => {
       // Protect against mutation floods
       const now = Date.now();
-      if (now - lastMutationTime < 1000) {
+      if (now - lastMutationTime < TIME.MS_PER_SECOND) {
         mutationCount++;
         if (mutationCount > MAX_MUTATIONS_PER_SECOND) {
           logger.warn('Too many mutations, throttling observer');
@@ -573,7 +575,7 @@ interface ContentConfig {
           
           if ('requestIdleCallback' in window) {
             await new Promise<void>((resolve) => {
-              requestIdleCallback(() => resolve(), { timeout: 100 });
+              requestIdleCallback(() => resolve(), { timeout: NUMERIC.PERCENTAGE_MAX });
             });
             if (signal.aborted) return;
           }
@@ -688,7 +690,7 @@ interface ContentConfig {
       'context-check',
       async (signal) => {
         while (!signal.aborted && chrome.runtime?.id) {
-          await asyncManager.delay(5000, signal);
+          await asyncManager.delay(NUMERIC.MINUTES_SHORT * TIME.MS_PER_SECOND, signal);
           if (!chrome.runtime?.id) {
             // Extension context invalidated, cleanup
             await cleanup();
@@ -738,7 +740,7 @@ interface ContentConfig {
             if (signal.aborted) return;
             
             // Wait a bit for DOM to stabilize
-            await asyncManager.delay(100, signal);
+            await asyncManager.delay(NUMERIC.PERCENTAGE_MAX, signal);
             
             if (signal.aborted) return;
             
@@ -758,7 +760,7 @@ interface ContentConfig {
             cancelOnNavigation: false // Don't cancel on navigation since we're handling navigation
           }
         );
-      }, 200); // 200ms debounce
+      }, ANIMATION.FADE_DURATION_MS); // 200ms debounce
     }
   };
   
@@ -798,7 +800,7 @@ interface ContentConfig {
     asyncManager.execute(
       'scroll-throttle',
       async (signal) => {
-        await asyncManager.delay(100, signal); // 100ms throttle
+        await asyncManager.delay(ANIMATION.THROTTLE_DELAY_MS, signal); // 100ms throttle
         scrollThrottled = false;
         
         // Could trigger lazy loading or other scroll-based features here
@@ -816,7 +818,7 @@ interface ContentConfig {
     asyncManager.execute(
       'resize-throttle',
       async (signal) => {
-        await asyncManager.delay(250, signal); // 250ms throttle for resize
+        await asyncManager.delay(TIME.MS_PER_SECOND / NUMERIC.DECIMAL_PRECISION_2 / ARRAY.PAIR_SIZE, signal); // 250ms throttle for resize
         resizeThrottled = false;
         
         // Could reposition tooltips or adjust layout here

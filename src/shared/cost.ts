@@ -3,6 +3,7 @@
 
 import { logger } from './logger';
 import { chromeCall, safe } from './utils/helpers';
+import { TIMING, RATE_LIMITS_EXTENDED, TIME, NUMERIC, THRESHOLD, QUALITY, COST } from './constants';
 
 // Type definitions for cost tracking
 interface CostLimit {
@@ -84,10 +85,10 @@ export class CostGuard {
   constructor() {
     // Cost limits to prevent bill explosion
     this.limits = {
-      perMinute: { cost: 0.10, calls: 100 },
-      perHour: { cost: 1.00, calls: 1000 },
-      perDay: { cost: 10.00, calls: 10000 },
-      perMonth: { cost: 100.00, calls: 100000 }
+      perMinute: { cost: COST.COST_PER_MINUTE_USD, calls: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_MINUTE * QUALITY.RATING_PERFECT },
+      perHour: { cost: 1.00, calls: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR * THRESHOLD.MAX_ERROR_COUNT },
+      perDay: { cost: COST.COST_PER_DAY_USD, calls: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY * THRESHOLD.MAX_ERROR_COUNT },
+      perMonth: { cost: 100.00, calls: RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY * TIME.DAYS_PER_MONTH * THRESHOLD.MAX_ERROR_COUNT }
     };
     
     // API cost estimates (conservative)
@@ -99,10 +100,10 @@ export class CostGuard {
     
     // Tracking
     this.usage = {
-      minute: { cost: 0, calls: 0, reset: Date.now() + 60000 },
-      hour: { cost: 0, calls: 0, reset: Date.now() + 3600000 },
-      day: { cost: 0, calls: 0, reset: Date.now() + 86400000 },
-      month: { cost: 0, calls: 0, reset: Date.now() + 2592000000 }
+      minute: { cost: 0, calls: 0, reset: Date.now() + TIME.MS_PER_MINUTE },
+      hour: { cost: 0, calls: 0, reset: Date.now() + TIME.MS_PER_HOUR },
+      day: { cost: 0, calls: 0, reset: Date.now() + TIME.MS_PER_DAY },
+      month: { cost: 0, calls: 0, reset: Date.now() + TIME.MS_PER_MONTH }
     };
     
     // Circuit breaker state
@@ -113,7 +114,7 @@ export class CostGuard {
     this.loadState();
     
     // Auto-save periodically
-    this.saveInterval = setInterval(() => this.saveState(), 60000);
+    this.saveInterval = setInterval(() => this.saveState(), TIME.MS_PER_MINUTE);
   }
   
   // Check if API call is allowed
@@ -123,7 +124,7 @@ export class CostGuard {
     
     // Check circuit breaker
     if (this.circuitOpen && Date.now() < this.circuitOpenUntil) {
-      const minutesLeft = Math.ceil((this.circuitOpenUntil - Date.now()) / 60000);
+      const minutesLeft = Math.ceil((this.circuitOpenUntil - Date.now()) / TIME.MS_PER_MINUTE);
       throw new Error(`API disabled due to high costs. Retry in ${minutesLeft} minutes.`);
     }
     
@@ -180,20 +181,20 @@ export class CostGuard {
     const now = Date.now();
     
     if (now > this.usage.minute.reset) {
-      this.usage.minute = { cost: 0, calls: 0, reset: now + 60000 };
+      this.usage.minute = { cost: 0, calls: 0, reset: now + TIME.MS_PER_MINUTE };
     }
     
     if (now > this.usage.hour.reset) {
-      this.usage.hour = { cost: 0, calls: 0, reset: now + 3600000 };
+      this.usage.hour = { cost: 0, calls: 0, reset: now + TIME.MS_PER_HOUR };
     }
     
     if (now > this.usage.day.reset) {
-      this.usage.day = { cost: 0, calls: 0, reset: now + 86400000 };
+      this.usage.day = { cost: 0, calls: 0, reset: now + TIME.MS_PER_DAY };
       this.circuitOpen = false; // Reset circuit breaker daily
     }
     
     if (now > this.usage.month.reset) {
-      this.usage.month = { cost: 0, calls: 0, reset: now + 2592000000 };
+      this.usage.month = { cost: 0, calls: 0, reset: now + TIME.MS_PER_MONTH };
     }
   }
   
@@ -202,9 +203,9 @@ export class CostGuard {
     for (const [period, limit] of Object.entries(this.limits)) {
       const periodKey = period.replace('per', '').toLowerCase() as PeriodType;
       const usage = this.usage[periodKey];
-      const costPercent = (usage.cost / limit.cost) * 100;
+      const costPercent = (usage.cost / limit.cost) * NUMERIC.PERCENTAGE_MAX;
       
-      if (costPercent > 80) {
+      if (costPercent > THRESHOLD.WARNING_THRESHOLD) {
         logger.warn(`Cost warning: ${costPercent.toFixed(0)}% of ${period} limit used`);
       }
     }
@@ -213,7 +214,7 @@ export class CostGuard {
   // Open circuit breaker
   private openCircuitBreaker(): void {
     this.circuitOpen = true;
-    this.circuitOpenUntil = Date.now() + 300000; // 5 minutes
+    this.circuitOpenUntil = Date.now() + TIMING.CIRCUIT_BREAKER_TIMEOUT_MS;
     logger.warn('Circuit breaker opened due to high costs', { 
       circuitOpenUntil: this.circuitOpenUntil 
     });
@@ -233,12 +234,12 @@ export class CostGuard {
         cost: {
           used: usage.cost,
           limit: limit.cost,
-          percentage: (usage.cost / limit.cost) * 100
+          percentage: (usage.cost / limit.cost) * NUMERIC.PERCENTAGE_MAX
         },
         calls: {
           used: usage.calls,
           limit: limit.calls,
-          percentage: (usage.calls / limit.calls) * 100
+          percentage: (usage.calls / limit.calls) * NUMERIC.PERCENTAGE_MAX
         }
       };
     }
@@ -273,7 +274,7 @@ export class CostGuard {
         const state = result.costGuardState as CostGuardState;
         
         // Only load if recent (within last hour)
-        if (Date.now() - state.lastSaved < 3600000) {
+        if (Date.now() - state.lastSaved < TIME.MS_PER_HOUR) {
           this.usage = state.usage;
           this.circuitOpen = state.circuitOpen;
           this.circuitOpenUntil = state.circuitOpenUntil;
@@ -285,7 +286,7 @@ export class CostGuard {
   // Emergency stop - disable all API calls
   emergencyStop(): void {
     this.circuitOpen = true;
-    this.circuitOpenUntil = Date.now() + 86400000; // 24 hours
+    this.circuitOpenUntil = Date.now() + TIME.MS_PER_DAY; // 24 hours
     logger.error('Emergency stop activated - all API calls disabled for 24 hours', {
       circuitOpenUntil: this.circuitOpenUntil
     });

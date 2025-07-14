@@ -11,6 +11,7 @@
  */
 
 import { safeSync } from './utils/helpers';
+import { TIME, NETWORK, RATE_LIMITS_EXTENDED, NUMERIC, ARRAY } from './constants';
 
 // These will be replaced during build by Vite
 declare const __WORKER_URL__: string;
@@ -68,20 +69,20 @@ export const config = {
 
   // API configuration
   get apiTimeout() {
-    return this.isDevelopment ? 30000 : 10000; // 30s dev, 10s prod
+    return this.isDevelopment ? (TIME.MS_PER_SECOND * TIME.SECONDS_PER_MINUTE / ARRAY.PAIR_SIZE) : NETWORK.REQUEST_TIMEOUT_MS; // 30s dev, 10s prod
   },
 
   get maxRetries() {
-    return this.isDevelopment ? 5 : 3;
+    return this.isDevelopment ? NUMERIC.MINUTES_SHORT : NETWORK.MAX_RETRY_COUNT;
   },
 
   // Rate limiting
   get rateLimitPerHour() {
-    return this.isDevelopment ? 1000 : 100;
+    return this.isDevelopment ? RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY : RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_HOUR;
   },
 
   get dailyTranslationLimit() {
-    return this.isDevelopment ? 10000 : 1000;
+    return this.isDevelopment ? (RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY * NUMERIC.DECIMAL_BASE) : RATE_LIMITS_EXTENDED.TRANSLATIONS_PER_DAY;
   }
 };
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { safe } from '../../../../shared/utils/helpers';
+import { TIME, NUMERIC, THRESHOLD } from '../../../../shared/constants';
 
 interface RateLimitInfo {
   translationLimits: {
@@ -31,7 +32,7 @@ export default function RateLimitStatus({ className = '' }: Props): React.JSX.El
   useEffect(() => {
     loadRateLimits();
     // Refresh every minute
-    const interval = setInterval(loadRateLimits, 60000);
+    const interval = setInterval(loadRateLimits, TIME.MS_PER_MINUTE);
     return () => clearInterval(interval);
   }, []);
   
@@ -51,8 +52,8 @@ export default function RateLimitStatus({ className = '' }: Props): React.JSX.El
     return <div className={`fluent-rate-limits ${className}`}>Loading usage...</div>;
   }
   
-  const translationPercent = (limits.translationLimits.dailyRemaining / limits.translationLimits.dailyLimit) * 100;
-  const aiPercent = (limits.aiLimits.dailyRemaining / limits.aiLimits.dailyLimit) * 100;
+  const translationPercent = (limits.translationLimits.dailyRemaining / limits.translationLimits.dailyLimit) * NUMERIC.PERCENTAGE_MAX;
+  const aiPercent = (limits.aiLimits.dailyRemaining / limits.aiLimits.dailyLimit) * NUMERIC.PERCENTAGE_MAX;
   
   return (
     <div className={`fluent-rate-limits ${className}`}>
@@ -69,8 +70,8 @@ export default function RateLimitStatus({ className = '' }: Props): React.JSX.El
           <div 
             className="fluent-rate-limit-fill"
             style={{ 
-              width: `${100 - translationPercent}%`,
-              backgroundColor: translationPercent > 20 ? '#3b82f6' : '#f59e0b'
+              width: `${NUMERIC.PERCENTAGE_MAX - translationPercent}%`,
+              backgroundColor: translationPercent > THRESHOLD.LOW_USAGE_THRESHOLD ? '#3b82f6' : '#f59e0b'
             }}
           />
         </div>
@@ -92,8 +93,8 @@ export default function RateLimitStatus({ className = '' }: Props): React.JSX.El
           <div 
             className="fluent-rate-limit-fill"
             style={{ 
-              width: `${100 - aiPercent}%`,
-              backgroundColor: aiPercent > 20 ? '#10b981' : '#f59e0b'
+              width: `${NUMERIC.PERCENTAGE_MAX - aiPercent}%`,
+              backgroundColor: aiPercent > THRESHOLD.LOW_USAGE_THRESHOLD ? '#10b981' : '#f59e0b'
             }}
           />
         </div>

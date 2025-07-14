@@ -34,6 +34,7 @@
 'use strict';
 
 import { logger } from '../../shared/logger';
+import { MATH, DOMAIN, NUMERIC, ARRAY, WORD_CONFIG, SRS, PERFORMANCE_LIMITS, CRYPTO } from '../../shared/constants';
 import { getMemoryMonitor } from '../../shared/monitor';
 import { 
   sanitizeText, 
@@ -113,7 +114,7 @@ export class WordReplacer {
             
             // Prevent memory leak - remove oldest entries in batch
             if (this.wordCounts.size >= this.MAX_WORD_CACHE) {
-              const keysToRemove = Math.floor(this.MAX_WORD_CACHE * 0.2); // Remove 20%
+              const keysToRemove = Math.floor(this.MAX_WORD_CACHE * MATH.EASE_FACTOR_DECREASE); // Remove 20%
               const iterator = this.wordCounts.keys();
               for (let i = 0; i < keysToRemove; i++) {
                 const key = iterator.next().value;
@@ -126,8 +127,8 @@ export class WordReplacer {
         }
       },
       {
-        chunkSize: 20,
-        maxTime: this.config.PERFORMANCE_GUARD_MS / 2
+        chunkSize: DOMAIN.MIN_NODE_LENGTH,
+        maxTime: this.config.PERFORMANCE_GUARD_MS / DOMAIN.BACKOFF_FACTOR
       }
     );
     
@@ -145,7 +146,7 @@ export class WordReplacer {
   private isValidWord(word: string): boolean {
     if (word.length < this.config.MIN_WORD_LENGTH) return false;
     if (/^(the|and|for|are|but|not|you|all|that|this|with|from)$/i.test(word)) return false;
-    if (/^[A-Z][a-z]*$/.test(word) && word.length < 6) return false; // Skip short proper nouns
+    if (/^[A-Z][a-z]*$/.test(word) && word.length < WORD_CONFIG.MAX_WORDS_PER_PAGE) return false; // Skip short proper nouns
     return true;
   }
 
@@ -202,16 +203,16 @@ export class WordReplacer {
     let score = 0;
     
     // Prefer words with 2-4 occurrences
-    if (count === 2 || count === 3) score += 3;
-    else if (count === 4) score += 2;
+    if (count === WORD_CONFIG.MIN_WORD_OCCURRENCES || count === ARRAY.TRIPLE_SIZE) score += ARRAY.TRIPLE_SIZE;
+    else if (count === WORD_CONFIG.MAX_WORD_OCCURRENCES) score += WORD_CONFIG.MIN_WORD_OCCURRENCES;
     
     // Prefer medium-length words
-    if (word.length >= 5 && word.length <= 8) score += 2;
-    else if (word.length > 8 && word.length <= 12) score += 1;
+    if (word.length >= NUMERIC.MINUTES_SHORT && word.length <= DOMAIN.MAX_CONSECUTIVE_ERRORS + ARRAY.TRIPLE_SIZE) score += ARRAY.PAIR_SIZE;
+    else if (word.length > DOMAIN.MAX_CONSECUTIVE_ERRORS + ARRAY.TRIPLE_SIZE && word.length <= CRYPTO.TAG_LENGTH) score += ARRAY.SINGLE_ITEM;
     
     // Prefer common learning words (this would be expanded with real data)
     const commonLearnWords = ['house', 'water', 'food', 'time', 'work', 'people', 'world'];
-    if (commonLearnWords.includes(word)) score += 2;
+    if (commonLearnWords.includes(word)) score += ARRAY.PAIR_SIZE;
     
     return score;
   }
@@ -386,9 +387,9 @@ export class WordReplacer {
     
     // Sort by index (sometimes shuffle order slightly)
     replacements.sort((a, b) => a.index - b.index);
-    if (Math.random() < 0.1) {
+    if (Math.random() < MATH.EASE_FACTOR_INCREASE) {
       // Occasionally process in slightly different order
-      const mid = Math.floor(replacements.length / 2);
+      const mid = Math.floor(replacements.length / ARRAY.PAIR_SIZE);
       [replacements[0], replacements[mid]] = [replacements[mid], replacements[0]];
     }
     

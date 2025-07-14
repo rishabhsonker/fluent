@@ -1,6 +1,8 @@
 // Performance utilities for production
 'use strict';
 
+import { PROCESSING, NUMERIC } from './constants';
+
 /**
  * Process items in chunks to avoid blocking the main thread
  */
@@ -14,9 +16,9 @@ export async function processInChunks<T>(
   } = {}
 ): Promise<void> {
   const {
-    chunkSize = 10,
+    chunkSize = PROCESSING.CHUNK_PROCESSING_SIZE,
     delayMs = 0,
-    maxTime = 50 // Max time per chunk in ms
+    maxTime = PROCESSING.CHUNK_TIMEOUT_MS
   } = options;
   
   const startTime = performance.now();
@@ -39,7 +41,7 @@ export async function processInChunks<T>(
     if (i + chunkSize < items.length) {
       if ('requestIdleCallback' in window) {
         await new Promise(resolve => {
-          requestIdleCallback(() => resolve(undefined), { timeout: 50 });
+          requestIdleCallback(() => resolve(undefined), { timeout: PROCESSING.IDLE_CALLBACK_TIMEOUT_MS });
         });
       } else if (delayMs > 0) {
         await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -97,7 +99,7 @@ export function throttle<T extends (...args: any[]) => any>(
  */
 export function* splitTextIntoChunks(
   text: string,
-  chunkSize: number = 1000
+  chunkSize: number = PROCESSING.MAX_BATCH_SIZE * NUMERIC.DECIMAL_BASE
 ): Generator<string, void, unknown> {
   for (let i = 0; i < text.length; i += chunkSize) {
     yield text.slice(i, i + chunkSize);

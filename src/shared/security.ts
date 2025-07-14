@@ -1,6 +1,6 @@
 // Security manager for service worker context (no window/document access)
 import { logger } from './logger';
-import { SECURITY } from './constants';
+import { SECURITY, TIMING, NUMERIC, ARRAY, TIME, DOMAIN } from './constants';
 
 interface SecurityConfig {
   maxMessageSize: number;
@@ -15,8 +15,8 @@ class ServiceWorkerSecurityManager {
 
   constructor() {
     this.config = {
-      maxMessageSize: 100000, // 100KB max message size
-      maxStringLength: 10000,  // 10K max string length
+      maxMessageSize: SECURITY.MAX_MESSAGE_SIZE,
+      maxStringLength: SECURITY.MAX_STRING_LENGTH,
       trustedOrigins: new Set([
         chrome.runtime.getURL(''),
         'https://api.cognitive.microsofttranslator.com',
@@ -81,7 +81,7 @@ class ServiceWorkerSecurityManager {
         // Don't throw error in production - just log warning
         // Some extensions or browser features may add properties
       }
-    }, 30000); // Check every 30 seconds
+    }, TIME.DAYS_PER_MONTH * TIME.MS_PER_SECOND); // Check every 30 seconds
   }
 
   // Validate incoming messages
@@ -160,7 +160,7 @@ class ServiceWorkerSecurityManager {
     const data = encoder.encode(content);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const hashHex = hashArray.map(b => b.toString(NUMERIC.HEX_BASE).padStart(DOMAIN.WORD_PADDING_CHARS, '0')).join('');
     return hashHex === expectedHash;
   }
 
@@ -170,7 +170,7 @@ class ServiceWorkerSecurityManager {
     const data = encoder.encode(content);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.map(b => b.toString(NUMERIC.HEX_BASE).padStart(DOMAIN.WORD_PADDING_CHARS, '0')).join('');
   }
 
   // Create secure message with integrity check
@@ -179,7 +179,7 @@ class ServiceWorkerSecurityManager {
       type,
       data,
       timestamp: Date.now(),
-      nonce: crypto.getRandomValues(new Uint32Array(1))[0]
+      nonce: crypto.getRandomValues(new Uint32Array(ARRAY.SINGLE_ITEM))[ARRAY.FIRST_INDEX]
     };
     
     const messageStr = JSON.stringify(message);
@@ -195,7 +195,7 @@ class ServiceWorkerSecurityManager {
     }
     
     // Check timestamp (5 minute validity)
-    if (Date.now() - message.timestamp > 300000) {
+    if (Date.now() - message.timestamp > TIMING.ERROR_RESET_TIME_MS) {
       throw new Error('Message too old');
     }
     

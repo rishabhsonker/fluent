@@ -33,6 +33,7 @@
  */
 
 import { logger } from './logger';
+import { CACHE_LIMITS, TIME, ARRAY } from './constants';
 
 interface CacheEntry<T> {
   value: T;
@@ -58,7 +59,7 @@ export class MemoryCache<T> {
   constructor(maxSize: number = 500, defaultTTLMinutes: number = 30) {
     this.cache = new Map();
     this.maxSize = maxSize;
-    this.defaultTTL = defaultTTLMinutes * 60 * 1000; // Convert to milliseconds
+    this.defaultTTL = defaultTTLMinutes * TIME.MS_PER_MINUTE; // Convert to milliseconds
     this.stats = {
       hits: 0,
       misses: 0,
@@ -107,7 +108,7 @@ export class MemoryCache<T> {
     }
     
     const now = Date.now();
-    const ttl = (ttlMinutes ? ttlMinutes * 60 * 1000 : this.defaultTTL);
+    const ttl = (ttlMinutes ? ttlMinutes * TIME.MS_PER_MINUTE : this.defaultTTL);
     
     const entry: CacheEntry<T> = {
       value,
@@ -277,9 +278,9 @@ export class MemoryCache<T> {
 export class TranslationMemoryCache extends MemoryCache<string> {
   private contextCache: MemoryCache<any>;
   
-  constructor(maxSize: number = 1000, defaultTTLMinutes: number = 30) {
+  constructor(maxSize: number = CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES, defaultTTLMinutes: number = TIME.DAYS_PER_MONTH) {
     super(maxSize, defaultTTLMinutes);
-    this.contextCache = new MemoryCache(500, 60); // Context cache with 1 hour TTL
+    this.contextCache = new MemoryCache(Math.floor(CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES / ARRAY.PAIR_SIZE), TIME.MINUTES_PER_HOUR); // Context cache with 1 hour TTL
   }
   
   /**
@@ -331,4 +332,4 @@ export class TranslationMemoryCache extends MemoryCache<string> {
 }
 
 // Export singleton instance
-export const translationCache = new TranslationMemoryCache(1000, 30);
+export const translationCache = new TranslationMemoryCache(CACHE_LIMITS.MEMORY_CACHE_MAX_ENTRIES, TIME.DAYS_PER_MONTH);

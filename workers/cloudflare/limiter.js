@@ -6,6 +6,7 @@
 import { logError, logInfo } from './logger.js';
 import { safe } from './utils.js';
 import { createErrorResponse, ErrorTypes } from './error-handler.js';
+import { RATE_LIMITS, TIME_PERIODS, HTTP } from './constants.js';
 
 export const COST_LIMITS = {
   DAILY_COST_USD: 10,
@@ -42,7 +43,7 @@ export async function applyRateLimit(env, rateLimitKey, targetLanguage, wordsToT
     const dailyRateLimit = env.DAILY_TRANSLATION_LIMITER ? await env.DAILY_TRANSLATION_LIMITER.limit({
       key: `${installationId}:${targetLanguage}`,
       multiplier
-    }) : { success: true, remaining: 1000 };
+    }) : { success: true, remaining: RATE_LIMITS.TRANSLATIONS_PER_DAY };
     
     rateLimitStatus = {
       hourlyRemaining: hourlyRateLimit.remaining || 0,
@@ -53,7 +54,7 @@ export async function applyRateLimit(env, rateLimitKey, targetLanguage, wordsToT
       const error = new Error('Rate limit exceeded for new translations');
       error.name = 'RateLimitError';
       error.status = 429;
-      const errorResponse = createErrorResponse(error, { retryAfter: 3600 });
+      const errorResponse = createErrorResponse(error, { retryAfter: TIME_PERIODS.ONE_HOUR_SECONDS });
       errorResponse.error.details = {
         partial: true,
         limits: rateLimitStatus
@@ -64,11 +65,11 @@ export async function applyRateLimit(env, rateLimitKey, targetLanguage, wordsToT
         rateLimitStatus,
         response: errorResponse,
         headers: {
-          'X-RateLimit-Limit-Hourly': '100',
+          'X-RateLimit-Limit-Hourly': RATE_LIMITS.TRANSLATIONS_PER_HOUR.toString(),
           'X-RateLimit-Remaining-Hourly': rateLimitStatus.hourlyRemaining.toString(),
-          'X-RateLimit-Limit-Daily': '1000', 
+          'X-RateLimit-Limit-Daily': RATE_LIMITS.TRANSLATIONS_PER_DAY.toString(), 
           'X-RateLimit-Remaining-Daily': rateLimitStatus.dailyRemaining.toString(),
-          'Retry-After': '3600'
+          'Retry-After': TIME_PERIODS.ONE_HOUR_SECONDS.toString()
         }
       };
     }
@@ -91,7 +92,7 @@ export async function applyAIRateLimit(env, installationId) {
   
   const dailyLimit = env.DAILY_AI_LIMITER ? await env.DAILY_AI_LIMITER.limit({
     key: `${installationId}:context`
-  }) : { success: true, remaining: 100 };
+  }) : { success: true, remaining: RATE_LIMITS.EXPLANATIONS_PER_DAY };
   
   const rateLimitStatus = {
     hourlyRemaining: hourlyLimit.remaining || 0,
@@ -102,7 +103,7 @@ export async function applyAIRateLimit(env, installationId) {
     const error = new Error('AI context rate limit exceeded');
     error.name = 'RateLimitError';
     error.status = 429;
-    const errorResponse = createErrorResponse(error, { retryAfter: 3600 });
+    const errorResponse = createErrorResponse(error, { retryAfter: TIME_PERIODS.ONE_HOUR_SECONDS });
     errorResponse.error.details = { context: null };
     
     return {
@@ -110,9 +111,9 @@ export async function applyAIRateLimit(env, installationId) {
       rateLimitStatus,
       response: errorResponse,
       headers: {
-        'X-AI-RateLimit-Limit-Hourly': '100',
+        'X-AI-RateLimit-Limit-Hourly': RATE_LIMITS.EXPLANATIONS_PER_HOUR.toString(),
         'X-AI-RateLimit-Remaining-Hourly': rateLimitStatus.hourlyRemaining.toString(),
-        'Retry-After': '3600'
+        'Retry-After': TIME_PERIODS.ONE_HOUR_SECONDS.toString()
       }
     };
   }
@@ -130,8 +131,8 @@ export async function checkCostLimit(characterCount, env) {
   }
   
   return await safe(async () => {
-    const hourAgo = Math.floor(Date.now() / 1000) - 3600;
-    const dayAgo = Math.floor(Date.now() / 1000) - 86400;
+    const hourAgo = Math.floor(Date.now() / 1000) - TIME_PERIODS.ONE_HOUR_SECONDS;
+    const dayAgo = Math.floor(Date.now() / 1000) - TIME_PERIODS.ONE_DAY_SECONDS;
     
     // Estimate costs based on translation counts
     // Assume average 10 characters per translation

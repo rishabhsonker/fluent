@@ -1,5 +1,6 @@
 import React, { Component, ReactNode } from 'react';
 import { logger } from '../../../../shared/logger';
+import { ARRAY } from '../../../../shared/constants';
 
 interface Props {
   children: ReactNode;
@@ -99,7 +100,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
             </div>
             
-            {this.state.errorCount > 2 && (
+            {this.state.errorCount > ARRAY.PAIR_SIZE && (
               <p className="error-hint">
                 If this keeps happening, try disabling and re-enabling the extension.
               </p>

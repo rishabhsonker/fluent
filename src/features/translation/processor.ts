@@ -35,6 +35,7 @@
 
 import { logger } from '../../shared/logger';
 import { safeSync } from '../../shared/utils/helpers';
+import { PROCESSING, PERFORMANCE_LIMITS, STORAGE_SIZE, DOMAIN } from '../../shared/constants';
 
 // Type definitions
 interface ProcessorConfig {
@@ -51,8 +52,8 @@ type ProcessCallback<T> = (node: Text) => T | null | undefined;
 
 export class TextProcessor {
   private config: ProcessorConfig;
-  private BATCH_SIZE: number = 50;
-  private FRAME_BUDGET: number = 16; // ms per frame for 60fps
+  private BATCH_SIZE: number = PROCESSING.MAX_QUEUE_SIZE;
+  private FRAME_BUDGET: number = PERFORMANCE_LIMITS.FRAME_BUDGET_MS; // ms per frame for 60fps
   private processedNodes: WeakSet<Text>;
 
   constructor(config: ProcessorConfig) {
@@ -87,7 +88,7 @@ export class TextProcessor {
       
       // Start new batch if current one is full
       if (currentBatch.length >= this.BATCH_SIZE || 
-          currentBatchSize + textLength > 10000) {
+          currentBatchSize + STORAGE_SIZE.COMPRESSION_THRESHOLD_BYTES) {
         if (currentBatch.length > 0) {
           batches.push(currentBatch);
         }
@@ -135,7 +136,7 @@ export class TextProcessor {
     
     for (const node of batch) {
       // Check if we're out of time
-      if (deadline && deadline.timeRemaining() < 2) {
+      if (deadline && deadline.timeRemaining() < DOMAIN.WORD_PADDING_CHARS) {
         logger.debug('Out of idle time, yielding...');
         break;
       }
@@ -173,7 +174,7 @@ export class TextProcessor {
   private yieldToBrowser(): Promise<void> {
     return new Promise(resolve => {
       if ('requestIdleCallback' in window) {
-        window.requestIdleCallback(() => resolve(), { timeout: 50 });
+        window.requestIdleCallback(() => resolve(), { timeout: PROCESSING.IDLE_CALLBACK_TIMEOUT_MS });
       } else {
         setTimeout(resolve, 0);
       }
@@ -223,7 +224,7 @@ export class TextProcessor {
       nodes.push(node as Text);
       
       // Limit collection for performance
-      if (nodes.length >= 1000) {
+      if (nodes.length >= DOMAIN.MAX_TEXT_LENGTH) {
         logger.debug('Text node limit reached');
         break;
       }

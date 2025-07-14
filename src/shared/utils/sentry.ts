@@ -6,6 +6,7 @@
 
 import { initErrorHandler, getErrorHandler } from './error-handler';
 import { config } from '../config';
+import { SAMPLING, PROCESSING_LIMITS } from '../constants';
 
 export type ExtensionContext = 'background' | 'content' | 'popup';
 
@@ -152,7 +153,7 @@ async function initSentryInternal(context: ExtensionContext) {
       // Content scripts: 5% sampling (high volume, lower priority)
       // Background: 10% sampling (medium volume, high priority)  
       // Popup: 50% sampling (low volume, user-facing)
-      tracesSampleRate: context === 'content' ? 0.05 : context === 'background' ? 0.1 : 0.5,
+      tracesSampleRate: context === 'content' ? SAMPLING.TRACE_SAMPLE_RATE_LOW : context === 'background' ? SAMPLING.TRACE_SAMPLE_RATE_BACKGROUND : SAMPLING.TRACE_SAMPLE_RATE_CRITICAL,
       
       // Custom traces sampler for more granular control
       tracesSampler: (samplingContext: any) => {
@@ -164,7 +165,7 @@ async function initSentryInternal(context: ExtensionContext) {
         // Sample critical operations more frequently
         const op = samplingContext.transactionContext.op;
         if (op === 'translation' || op === 'api.request') {
-          return 0.2; // 20% for important operations
+          return SAMPLING.TRACE_SAMPLE_RATE_HIGH; // 20% for important operations
         }
         
         // Use default sample rate
@@ -262,8 +263,8 @@ async function initSentryInternal(context: ExtensionContext) {
           }
           
           // Limit breadcrumb count
-          if (event.breadcrumbs && event.breadcrumbs.length > 10) {
-            event.breadcrumbs = event.breadcrumbs.slice(-10);
+          if (event.breadcrumbs && event.breadcrumbs.length > PROCESSING_LIMITS.MAX_BREADCRUMB_COUNT) {
+            event.breadcrumbs = event.breadcrumbs.slice(PROCESSING_LIMITS.BREADCRUMB_SLICE_OFFSET);
           }
         }
         
@@ -397,8 +398,8 @@ function sanitizeEventData(data: Record<string, any>): Record<string, any> {
     if (lowerKey.includes('word') || 
         lowerKey.includes('translation') ||
         lowerKey.includes('text')) {
-      if (typeof value === 'string' && value.length > 3) {
-        sanitized[key] = value.substring(0, 3) + '***';
+      if (typeof value === 'string' && value.length > PROCESSING_LIMITS.SANITIZATION_PREFIX_LENGTH) {
+        sanitized[key] = value.substring(0, PROCESSING_LIMITS.SANITIZATION_PREFIX_LENGTH) + '***';
       } else if (Array.isArray(value)) {
         sanitized[key] = `[${value.length} items]`;
       } else {

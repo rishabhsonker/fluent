@@ -10,6 +10,7 @@ import {
   type LanguageValidator 
 } from './validation';
 import { safeSync } from './utils/helpers';
+import { THRESHOLD, QUALITY } from './constants';
 
 interface SettingsBounds {
   wordsPerPage: {
@@ -289,7 +290,7 @@ export class Validator {
     return {
       enabled: (settings as any).enabled === true,
       customWordCount: typeof (settings as any).customWordCount === 'number' 
-        ? Math.min(Math.max((settings as any).customWordCount, 0), 20) 
+        ? Math.min(Math.max((settings as any).customWordCount, 0), THRESHOLD.LOW_USAGE_THRESHOLD) 
         : undefined
     };
   }
@@ -334,7 +335,7 @@ export class Validator {
       const hasTargetLangChars = normalized.split('').some(char => 
         validator.isValidChar(char)
       );
-      if (!hasTargetLangChars && normalized.length > 3) {
+      if (!hasTargetLangChars && normalized.length > QUALITY.RATING_GOOD) {
         return null;
       }
     }

@@ -32,7 +32,7 @@
  */
 
 import { secureCrypto } from './crypto';
-import { API_CONFIG, AUTH_CONSTANTS } from '../../shared/constants';
+import { API_CONFIG, AUTH_CONSTANTS, NETWORK, DOMAIN } from '../../shared/constants';
 import { logger } from '../../shared/logger';
 import { fetchWithRetry } from '../../shared/network';
 import { safe, chromeCall } from '../../shared/utils/helpers';
@@ -144,10 +144,10 @@ export class InstallationAuth {
           }),
         },
         {
-          maxRetries: 5, // More retries for registration since it's critical
-          initialDelay: 2000, // Start with 2 seconds
+          maxRetries: NETWORK.MAX_RETRY_COUNT + DOMAIN.WORD_PADDING_CHARS, // More retries for registration since it's critical
+          initialDelay: NETWORK.RETRY_INITIAL_DELAY_MS * DOMAIN.BACKOFF_FACTOR, // Start with double the standard delay for critical registration
           onRetry: (attempt) => {
-            logger.info(`Registration retry attempt ${attempt}/${5}`);
+            logger.info(`Registration retry attempt ${attempt}/${NETWORK.MAX_RETRY_COUNT + DOMAIN.WORD_PADDING_CHARS}`);
           }
         }
       );

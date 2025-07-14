@@ -6,6 +6,7 @@
  */
 
 import { logger } from '../logger';
+import { PROCESSING_LIMITS, NUMERIC } from '../constants';
 
 // Simplified Sentry Hub interface to avoid dependency
 interface SentryHub {
@@ -95,11 +96,11 @@ export class ErrorHandler {
     if (!extra) return {};
     
     // Size limits based on Sentry best practices
-    const MAX_STRING_LENGTH = 1000;
-    const MAX_ARRAY_LENGTH = 10;
-    const MAX_OBJECT_DEPTH = 3;
+    const MAX_STRING_LENGTH = PROCESSING_LIMITS.MAX_STRING_LENGTH;
+    const MAX_ARRAY_LENGTH = PROCESSING_LIMITS.MAX_ARRAY_LENGTH;
+    const MAX_OBJECT_DEPTH = PROCESSING_LIMITS.MAX_OBJECT_DEPTH;
     const MAX_OBJECT_KEYS = 20;
-    const MAX_TOTAL_SIZE = 200 * 1024; // 200KB limit
+    const MAX_TOTAL_SIZE = PROCESSING_LIMITS.MAX_PAYLOAD_KB * NUMERIC.BYTES_PER_KB; // 200KB limit
     
     let totalSize = 0;
     
@@ -125,7 +126,7 @@ export class ErrorHandler {
       // Handle strings
       if (typeof value === 'string') {
         if (isSensitive) {
-          return value.length > 3 ? value.substring(0, 3) + '***' : '[REDACTED]';
+          return value.length > PROCESSING_LIMITS.REDACTION_PREFIX_LENGTH ? value.substring(0, PROCESSING_LIMITS.REDACTION_PREFIX_LENGTH) + '***' : '[REDACTED]';
         }
         return value.length > MAX_STRING_LENGTH 
           ? value.substring(0, MAX_STRING_LENGTH) + '...[TRUNCATED]'
@@ -225,7 +226,7 @@ export class ErrorHandler {
       const duration = Date.now() - start;
       
       // Log slow operations
-      if (duration > 1000) {
+      if (duration > PROCESSING_LIMITS.SLOW_OPERATION_THRESHOLD_MS) {
         logger.warn(`Slow operation: ${context.operation} took ${duration}ms`);
         
         if (this.sentry) {

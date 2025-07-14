@@ -35,7 +35,8 @@
 'use strict';
 
 import { logger } from '../../../shared/logger';
-import { TIMING } from '../../../shared/constants';
+import { TIMING, PERFORMANCE_LIMITS, NUMERIC, UI_DIMENSIONS_EXTENDED, ARRAY, TIME, THRESHOLD, ANIMATION } from '../../../shared/constants';
+import { CSS_DIMENSIONS } from '../../../shared/constants/css-variables';
 import { ComponentAsyncManager } from '../../../shared/async';
 import { throttle } from '../../../shared/performance';
 import { safe } from '../../../shared/utils/helpers';
@@ -94,7 +95,7 @@ export class Tooltip {
   constructor() {
     this.asyncManager = new ComponentAsyncManager('Tooltip');
     // Create throttled update function
-    this.throttledUpdatePosition = throttle(() => this.updatePosition(), 16);
+    this.throttledUpdatePosition = throttle(() => this.updatePosition(), PERFORMANCE_LIMITS.FRAME_BUDGET_MS);
     this.init();
   }
   
@@ -239,7 +240,7 @@ export class Tooltip {
             this.element.classList.remove('fluent-opacity-low');
             this.element.classList.add('fluent-opacity-full');
           }
-        }, 150);
+        }, ANIMATION.DEBOUNCE_DELAY_MS);
       }
     };
     
@@ -351,7 +352,7 @@ export class Tooltip {
         this.updatePosition();
         
         // Update position again after a brief delay
-        await this.asyncManager.delay(10, signal);
+        await this.asyncManager.delay(THRESHOLD.MAX_ERROR_COUNT, signal);
         if (!signal.aborted && this.isVisible) {
           this.updatePosition();
         }
@@ -495,14 +496,14 @@ export class Tooltip {
           
           if (progressFill && progressText) {
             // Use CSS classes for width
-            const widthClass = `fluent-progress-${Math.round(wordData.mastery / 10) * 10}`;
+            const widthClass = `fluent-progress-${Math.round(wordData.mastery / THRESHOLD.MAX_ERROR_COUNT) * THRESHOLD.MAX_ERROR_COUNT}`;
             progressFill.className = 'fluent-tooltip-progress-fill ' + widthClass;
             
             // Set color based on mastery
-            if (wordData.mastery >= 80) {
+            if (wordData.mastery >= THRESHOLD.WARNING_THRESHOLD) {
               progressFill.classList.add('fluent-progress-green');
               progressText.textContent = '';
-            } else if (wordData.mastery >= 50) {
+            } else if (wordData.mastery >= NUMERIC.PERCENTAGE_HALF) {
               progressFill.classList.add('fluent-progress-yellow');
               progressText.textContent = '';
             } else {
@@ -596,7 +597,7 @@ export class Tooltip {
       word: original,
       translation: translation,
       language: language,
-      sentence: sentence?.substring(0, 50) + '...' // Log first 50 chars of sentence
+      sentence: sentence?.substring(0, NUMERIC.PERCENTAGE_HALF) + '...' // Log first 50 chars of sentence
     });
     
     // Check if chrome.runtime is available
@@ -727,7 +728,7 @@ export class Tooltip {
     this.asyncManager.execute(
       'hide-animation',
       async (signal) => {
-        await this.asyncManager.delay(200, signal);
+        await this.asyncManager.delay(ANIMATION.FADE_DURATION_MS, signal);
         if (!signal.aborted && !this.isVisible && this.element) {
           this.element.classList.add('fluent-hidden');
           this.currentTarget = null;
@@ -747,7 +748,7 @@ export class Tooltip {
     this.cancelHide();
     this.hideTimeout = window.setTimeout(() => {
       this.hide();
-    }, 300);
+    }, ANIMATION.SLIDE_DURATION_MS);
   }
 
   private cancelHide(): void {
@@ -781,25 +782,25 @@ export class Tooltip {
     const tooltipHeight = tooltipRect.height;
     
     // Check if there's enough space above (with 20px margin)
-    if (spaceAbove >= tooltipHeight + 20) {
+    if (spaceAbove >= tooltipHeight + CSS_DIMENSIONS.ICON_MEDIUM) {
       // Place above with more spacing to avoid covering the word
-      top = targetRect.top + scrollTop - tooltipHeight - 12;
+      top = targetRect.top + scrollTop - tooltipHeight - CSS_DIMENSIONS.TOOLTIP_ARROW_SIZE;
       this.element.classList.remove('bottom');
       this.element.classList.add('top');
-    } else if (spaceBelow >= tooltipHeight + 20) {
+    } else if (spaceBelow >= tooltipHeight + CSS_DIMENSIONS.ICON_MEDIUM) {
       // Place below with more spacing
-      top = targetRect.bottom + scrollTop + 12;
+      top = targetRect.bottom + scrollTop + CSS_DIMENSIONS.TOOLTIP_ARROW_SIZE;
       tooltipAbove = false;
       this.element.classList.remove('top');
       this.element.classList.add('bottom');
     } else {
       // Not enough space either way, choose the side with more space
       if (spaceAbove > spaceBelow) {
-        top = Math.max(scrollTop + 10, targetRect.top + scrollTop - tooltipHeight - 12);
+        top = Math.max(scrollTop + THRESHOLD.MAX_ERROR_COUNT, targetRect.top + scrollTop - tooltipHeight - CSS_DIMENSIONS.TOOLTIP_ARROW_SIZE);
         this.element.classList.remove('bottom');
         this.element.classList.add('top');
       } else {
-        top = targetRect.bottom + scrollTop + 12;
+        top = targetRect.bottom + scrollTop + CSS_DIMENSIONS.TOOLTIP_ARROW_SIZE;
         tooltipAbove = false;
         this.element.classList.remove('top');
         this.element.classList.add('bottom');
@@ -807,11 +808,11 @@ export class Tooltip {
     }
 
     // Calculate horizontal position (center by default)
-    let left = targetRect.left + scrollLeft + (targetRect.width / 2) - (tooltipRect.width / 2);
+    let left = targetRect.left + scrollLeft + (targetRect.width / ARRAY.PAIR_SIZE) - (tooltipRect.width / ARRAY.PAIR_SIZE);
 
     // Keep within viewport horizontally with 10px margins
-    const minLeft = scrollLeft + 10;
-    const maxLeft = scrollLeft + viewport.width - tooltipRect.width - 10;
+    const minLeft = scrollLeft + THRESHOLD.MAX_ERROR_COUNT;
+    const maxLeft = scrollLeft + viewport.width - tooltipRect.width - THRESHOLD.MAX_ERROR_COUNT;
     
     if (left < minLeft) {
       left = minLeft;
@@ -869,7 +870,7 @@ export class Tooltip {
         btn.textContent = '🔊 Playing...';
         setTimeout(() => {
           btn.textContent = '🔊 Pronunciation';
-        }, 1000);
+        }, TIME.MS_PER_SECOND);
       }
     }
   }
@@ -878,7 +879,7 @@ export class Tooltip {
   private getWordContext(element: HTMLElement): string {
     // Get the parent text node or container
     let container: HTMLElement | null = element.parentElement;
-    while (container && container.textContent && container.textContent.length < 50) {
+    while (container && container.textContent && container.textContent.length < NUMERIC.PERCENTAGE_HALF) {
       container = container.parentElement;
     }
     
@@ -888,7 +889,7 @@ export class Tooltip {
     const text = container.textContent;
     const wordIndex = text.indexOf(element.textContent || '');
     
-    if (wordIndex === -1) return text.slice(0, 100);
+    if (wordIndex === -1) return text.slice(ARRAY.FIRST_INDEX, NUMERIC.PERCENTAGE_MAX);
     
     // Find sentence boundaries
     let start = wordIndex;

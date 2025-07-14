@@ -10,6 +10,7 @@
  */
 
 import { logger } from './logger';
+import { PROCESSING, MONITORING, TIME, PROCESSING_LIMITS, ARRAY } from './constants';
 
 interface AsyncOperation {
   id: string;
@@ -34,8 +35,8 @@ export class AsyncManager {
   private navigationController: AbortController | null = null;
   
   // Limits and cleanup
-  private readonly MAX_OPERATIONS = 100;
-  private readonly OPERATION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  private readonly MAX_OPERATIONS = PROCESSING.MAX_CONCURRENT_OPERATIONS;
+  private readonly OPERATION_TIMEOUT = MONITORING.INACTIVITY_TIMEOUT_MS;
   private cleanupInterval: number | null = null;
   private lastCleanup = Date.now();
 
@@ -83,7 +84,7 @@ export class AsyncManager {
     }
     
     // Periodic cleanup check
-    if (Date.now() - this.lastCleanup > 60000) { // Every minute
+    if (Date.now() - this.lastCleanup > TIME.MS_PER_MINUTE) { // Every minute
       this.scheduleCleanup();
     }
 
@@ -312,7 +313,7 @@ export class AsyncManager {
       this.cleanupOldOperations().catch(error => {
         logger.error('Cleanup error:', error);
       });
-    }, 60000) as unknown as number; // Every minute
+    }, PROCESSING_LIMITS.CLEANUP_INTERVAL_MS) as unknown as number; // Every minute
   }
   
   /**

@@ -10,6 +10,7 @@ import { applyRateLimit, checkCostLimit, updateCostTracking } from './limiter.js
 import { callTranslatorAPI, getContextForWords } from './api.js';
 import { generateBasicContext, generateBasicContextVariations } from './context.js';
 import { validateWordList, validatePayloadSize, VALIDATION_LIMITS } from './validator.js';
+import { RATE_LIMITS, TIME_PERIODS, CACHE } from './constants.js';
 
 /**
  * Handle combined translation + context request
@@ -113,7 +114,7 @@ export async function handleTranslateWithContext(request, env, ctx) {
 
     // Apply rate limiting with payload size consideration
     const payloadSize = new TextEncoder().encode(JSON.stringify(body)).length;
-    const rateLimitKey = `${installationId}:${targetLanguage}:${Math.ceil(payloadSize / 1000)}`;
+    const rateLimitKey = `${installationId}:${targetLanguage}:${Math.ceil(payloadSize / CACHE.MAX_STRING_LENGTH)}`;
     const rateLimit = await applyRateLimit(env, rateLimitKey, targetLanguage, wordsToTranslate);
     
     if (rateLimit.limited) {
@@ -313,8 +314,8 @@ export async function handleTranslateWithContext(request, env, ctx) {
       status: 200,
       headers: { 
         'Content-Type': 'application/json',
-        'X-RateLimit-Remaining-Hourly': (rateLimitStatus.hourlyRemaining || 100).toString(),
-        'X-RateLimit-Remaining-Daily': (rateLimitStatus.dailyRemaining || 1000).toString(),
+        'X-RateLimit-Remaining-Hourly': (rateLimitStatus.hourlyRemaining || RATE_LIMITS.TRANSLATIONS_PER_HOUR).toString(),
+        'X-RateLimit-Remaining-Daily': (rateLimitStatus.dailyRemaining || RATE_LIMITS.TRANSLATIONS_PER_DAY).toString(),
         'X-Processing-Time-Ms': processingTime.toString(),
         'X-Cache-Hit-Rate': (cacheStats.hits / (cacheStats.hits + cacheStats.misses) * 100).toFixed(1),
         'X-Preloaded-Hit-Rate': (cacheStats.preloadedHits / validWords.length * 100).toFixed(1),
