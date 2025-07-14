@@ -32,6 +32,12 @@ interface AsyncOperation {
 export class AsyncManager {
   private operations: Map<string, AsyncOperation> = new Map();
   private navigationController: AbortController | null = null;
+  
+  // Limits and cleanup
+  private readonly MAX_OPERATIONS = 100;
+  private readonly OPERATION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  private cleanupInterval: number | null = null;
+  private lastCleanup = Date.now();
 
   /**
    * Execute an async operation with automatic cancellation support
@@ -60,6 +66,25 @@ export class AsyncManager {
     if (preventDuplicates && this.operations.has(id)) {
       logger.debug(`Cancelling duplicate operation: ${id}`);
       await this.cancel(id);
+    }
+    
+    // Check operation limit and cleanup if needed
+    if (this.operations.size >= this.MAX_OPERATIONS) {
+      logger.warn(`Operation limit reached (${this.MAX_OPERATIONS}), cleaning up`);
+      await this.cleanupOldOperations();
+      
+      // If still at limit, evict oldest
+      if (this.operations.size >= this.MAX_OPERATIONS) {
+        const oldestId = this.getOldestOperationId();
+        if (oldestId) {
+          await this.cancel(oldestId);
+        }
+      }
+    }
+    
+    // Periodic cleanup check
+    if (Date.now() - this.lastCleanup > 60000) { // Every minute
+      this.scheduleCleanup();
     }
 
     // Create abort controller
@@ -227,8 +252,94 @@ export class AsyncManager {
       this.navigationController = null;
     }
     
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    
     window.removeEventListener('pagehide', this.handleNavigation);
     window.removeEventListener('beforeunload', this.handleNavigation);
+  }
+  
+  /**
+   * Clean up old operations that may be stuck
+   */
+  private async cleanupOldOperations(): Promise<void> {
+    const now = Date.now();
+    const toCancel: string[] = [];
+    
+    for (const [id, operation] of this.operations) {
+      const age = now - operation.timestamp;
+      if (age > this.OPERATION_TIMEOUT) {
+        logger.warn(`Operation timeout: ${id} (${age}ms old)`);
+        toCancel.push(id);
+      }
+    }
+    
+    for (const id of toCancel) {
+      await this.cancel(id);
+    }
+    
+    this.lastCleanup = now;
+  }
+  
+  /**
+   * Get the oldest operation ID
+   */
+  private getOldestOperationId(): string | null {
+    let oldestId: string | null = null;
+    let oldestTime = Infinity;
+    
+    for (const [id, operation] of this.operations) {
+      if (operation.timestamp < oldestTime) {
+        oldestTime = operation.timestamp;
+        oldestId = id;
+      }
+    }
+    
+    return oldestId;
+  }
+  
+  /**
+   * Schedule periodic cleanup
+   */
+  private scheduleCleanup(): void {
+    if (this.cleanupInterval) {
+      return; // Already scheduled
+    }
+    
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupOldOperations().catch(error => {
+        logger.error('Cleanup error:', error);
+      });
+    }, 60000) as unknown as number; // Every minute
+  }
+  
+  /**
+   * Get statistics about operations
+   */
+  getStats(): {
+    pending: number;
+    oldest: number | null;
+    averageAge: number;
+  } {
+    const now = Date.now();
+    let totalAge = 0;
+    let oldest: number | null = null;
+    
+    for (const operation of this.operations.values()) {
+      const age = now - operation.timestamp;
+      totalAge += age;
+      if (oldest === null || age > oldest) {
+        oldest = age;
+      }
+    }
+    
+    return {
+      pending: this.operations.size,
+      oldest,
+      averageAge: this.operations.size > 0 ? totalAge / this.operations.size : 0
+    };
   }
 
   /**

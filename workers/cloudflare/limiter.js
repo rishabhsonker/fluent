@@ -1,6 +1,11 @@
 /**
  * Rate limiting and cost tracking module for Cloudflare Worker
+ * Uses D1 for tracking and Cloudflare's built-in rate limiters
  */
+
+import { logError, logInfo } from './logger.js';
+import { safe } from './utils.js';
+import { createErrorResponse, ErrorTypes } from './error-handler.js';
 
 export const COST_LIMITS = {
   DAILY_COST_USD: 10,
@@ -15,7 +20,7 @@ export const PAYLOAD_LIMITS = {
 
 /**
  * Apply rate limiting for translation requests
- * Now includes payload size consideration
+ * Uses Cloudflare's built-in rate limiters
  */
 export async function applyRateLimit(env, rateLimitKey, targetLanguage, wordsToTranslate) {
   let rateLimitStatus = { hourlyRemaining: null, dailyRemaining: null };
@@ -34,10 +39,10 @@ export async function applyRateLimit(env, rateLimitKey, targetLanguage, wordsToT
       multiplier
     });
     
-    const dailyRateLimit = await env.DAILY_TRANSLATION_LIMITER.limit({
+    const dailyRateLimit = env.DAILY_TRANSLATION_LIMITER ? await env.DAILY_TRANSLATION_LIMITER.limit({
       key: `${installationId}:${targetLanguage}`,
       multiplier
-    });
+    }) : { success: true, remaining: 1000 };
     
     rateLimitStatus = {
       hourlyRemaining: hourlyRateLimit.remaining || 0,
@@ -45,16 +50,19 @@ export async function applyRateLimit(env, rateLimitKey, targetLanguage, wordsToT
     };
     
     if (!hourlyRateLimit.success || !dailyRateLimit.success) {
+      const error = new Error('Rate limit exceeded for new translations');
+      error.name = 'RateLimitError';
+      error.status = 429;
+      const errorResponse = createErrorResponse(error, { retryAfter: 3600 });
+      errorResponse.error.details = {
+        partial: true,
+        limits: rateLimitStatus
+      };
+      
       return {
         limited: true,
         rateLimitStatus,
-        response: {
-          error: 'Rate limit exceeded for new translations',
-          metadata: {
-            partial: true,
-            limits: rateLimitStatus
-          }
-        },
+        response: errorResponse,
         headers: {
           'X-RateLimit-Limit-Hourly': '100',
           'X-RateLimit-Remaining-Hourly': rateLimitStatus.hourlyRemaining.toString(),
@@ -81,9 +89,9 @@ export async function applyAIRateLimit(env, installationId) {
     key: `${installationId}:context`
   });
   
-  const dailyLimit = await env.DAILY_AI_LIMITER.limit({
+  const dailyLimit = env.DAILY_AI_LIMITER ? await env.DAILY_AI_LIMITER.limit({
     key: `${installationId}:context`
-  });
+  }) : { success: true, remaining: 100 };
   
   const rateLimitStatus = {
     hourlyRemaining: hourlyLimit.remaining || 0,
@@ -91,13 +99,16 @@ export async function applyAIRateLimit(env, installationId) {
   };
   
   if (!hourlyLimit.success || !dailyLimit.success) {
+    const error = new Error('AI context rate limit exceeded');
+    error.name = 'RateLimitError';
+    error.status = 429;
+    const errorResponse = createErrorResponse(error, { retryAfter: 3600 });
+    errorResponse.error.details = { context: null };
+    
     return {
       limited: true,
       rateLimitStatus,
-      response: {
-        error: 'AI context rate limit exceeded',
-        context: null
-      },
+      response: errorResponse,
       headers: {
         'X-AI-RateLimit-Limit-Hourly': '100',
         'X-AI-RateLimit-Remaining-Hourly': rateLimitStatus.hourlyRemaining.toString(),
@@ -110,63 +121,70 @@ export async function applyAIRateLimit(env, installationId) {
 }
 
 /**
- * Check cost limits
+ * Check cost limits using D1
  */
 export async function checkCostLimit(characterCount, env) {
-  const now = new Date();
-  const hourKey = `cost:hour:${now.toISOString().slice(0, 13)}`;
-  const dayKey = `cost:day:${now.toISOString().slice(0, 10)}`;
-
-  const [hourlyCost, dailyCost] = env.TRANSLATION_CACHE ? await Promise.all([
-    env.TRANSLATION_CACHE.get(hourKey),
-    env.TRANSLATION_CACHE.get(dayKey),
-  ]) : [null, null];
-
-  const currentHourlyCost = parseFloat(hourlyCost || '0');
-  const currentDailyCost = parseFloat(dailyCost || '0');
-  const requestCost = characterCount * COST_LIMITS.COST_PER_CHARACTER;
-
-  if (currentHourlyCost + requestCost > COST_LIMITS.HOURLY_COST_USD) {
-    return {
-      blocked: true,
-      message: 'Hourly cost limit exceeded. Please try again later or provide your own API key.',
-    };
+  if (!env.DB) {
+    // If D1 not available, allow the request
+    return { blocked: false };
   }
-
-  if (currentDailyCost + requestCost > COST_LIMITS.DAILY_COST_USD) {
-    return {
-      blocked: true,
-      message: 'Daily cost limit exceeded. Service will resume tomorrow or provide your own API key.',
-    };
-  }
-
-  return { blocked: false };
+  
+  return await safe(async () => {
+    const hourAgo = Math.floor(Date.now() / 1000) - 3600;
+    const dayAgo = Math.floor(Date.now() / 1000) - 86400;
+    
+    // Estimate costs based on translation counts
+    // Assume average 10 characters per translation
+    const avgCharsPerTranslation = 10;
+    
+    // Get hourly and daily translation counts from user_tracking
+    const { AnalyticsDB } = await import('./database.js');
+    
+    const [hourlyCount, dailyCount] = await Promise.all([
+      AnalyticsDB.getTranslationCount(env.DB, hourAgo),
+      AnalyticsDB.getTranslationCount(env.DB, dayAgo)
+    ]);
+    
+    const currentHourlyCost = hourlyCount * avgCharsPerTranslation * COST_LIMITS.COST_PER_CHARACTER;
+    const currentDailyCost = dailyCount * avgCharsPerTranslation * COST_LIMITS.COST_PER_CHARACTER;
+    const requestCost = characterCount * COST_LIMITS.COST_PER_CHARACTER;
+    
+    if (currentHourlyCost + requestCost > COST_LIMITS.HOURLY_COST_USD) {
+      return {
+        blocked: true,
+        message: 'Hourly cost limit exceeded. Please try again later or provide your own API key.',
+      };
+    }
+    
+    if (currentDailyCost + requestCost > COST_LIMITS.DAILY_COST_USD) {
+      return {
+        blocked: true,
+        message: 'Daily cost limit exceeded. Service will resume tomorrow or provide your own API key.',
+      };
+    }
+    
+    return { blocked: false };
+  }, 'Error checking cost limits', { blocked: false });
 }
 
 /**
- * Update cost tracking
+ * Update cost tracking in D1
  */
-export async function updateCostTracking(characterCount, env) {
-  const now = new Date();
-  const hourKey = `cost:hour:${now.toISOString().slice(0, 13)}`;
-  const dayKey = `cost:day:${now.toISOString().slice(0, 10)}`;
-  const requestCost = characterCount * COST_LIMITS.COST_PER_CHARACTER;
-
-  const [hourlyCost, dailyCost] = env.TRANSLATION_CACHE ? await Promise.all([
-    env.TRANSLATION_CACHE.get(hourKey),
-    env.TRANSLATION_CACHE.get(dayKey),
-  ]) : [null, null];
-
-  await Promise.all([
-    env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
-      hourKey,
-      String((parseFloat(hourlyCost || '0') + requestCost)),
-      { expirationTtl: 3600 }
-    ),
-    env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
-      dayKey,
-      String((parseFloat(dailyCost || '0') + requestCost)),
-      { expirationTtl: 24 * 60 * 60 }
-    ),
-  ]);
+export async function updateCostTracking(characterCount, env, installationId = null, userId = null) {
+  if (!env.DB || !userId) return;
+  
+  await safe(async () => {
+    // Cost tracking is now implicit through the usage tracking in user_tracking table
+    // The UsageDB.increment() calls in auth.js already track translations
+    // We can calculate costs from the translation counts when needed
+    
+    // Log for monitoring purposes
+    const requestCost = characterCount * COST_LIMITS.COST_PER_CHARACTER;
+    logInfo('Translation cost estimate', {
+      characterCount,
+      estimatedCost: requestCost,
+      userId,
+      installationId
+    });
+  }, 'Error in cost tracking');
 }

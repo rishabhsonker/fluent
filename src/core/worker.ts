@@ -32,6 +32,7 @@
 
 
 import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS, API_CONFIG } from '../shared/constants';
+import { config } from '../shared/config';
 import { validator } from '../shared/validator';
 import { logger } from '../shared/logger';
 import { serviceWorkerSecurityManager as securityManager } from '../shared/security';
@@ -42,15 +43,48 @@ import { offlineManager } from '../shared/offline';
 import { ComponentAsyncManager } from '../shared/async';
 import { rateLimiter } from '../shared/throttle';
 import type { UserSettings, SiteSettings, LanguageCode } from '../shared/types';
+import { getErrorHandler, type ErrorHandler } from '../shared/utils/error-handler';
+import { getMemoryMonitor } from '../shared/monitor';
+import { getLifecycleManager } from '../shared/lifecycle';
+import { safe } from '../shared/utils/helpers';
 
+// Initialize error handler and lifecycle manager
+let errorHandler: ErrorHandler = getErrorHandler();
+const lifecycleManager = getLifecycleManager();
+
+// Try to initialize Sentry if available
+(async () => {
+  await safe(async () => {
+    // Check if Sentry packages are available
+    if ('@sentry/browser' in (window as any) || config.SENTRY_DSN) {
+      const { initSentry } = await import('../shared/utils/sentry');
+      errorHandler = await initSentry('background');
+      logger.info('[Service Worker] Sentry initialized');
+    } else {
+      logger.info('[Service Worker] Running without Sentry');
+    }
+  }, '[Service Worker] Sentry initialization failed, continuing without it');
+})();
 
 // Global error handlers
 self.addEventListener('error', (event) => {
   logger.error('[Service Worker] Global error:', event.error);
+  if (errorHandler) {
+    errorHandler.withSyncErrorHandling(
+      () => { throw event.error; },
+      { operation: 'global-error', component: 'service-worker' }
+    );
+  }
 });
 
 self.addEventListener('unhandledrejection', (event) => {
   logger.error('[Service Worker] Unhandled promise rejection:', event.reason);
+  if (errorHandler) {
+    errorHandler.withSyncErrorHandling(
+      () => { throw event.reason; },
+      { operation: 'unhandled-rejection', component: 'service-worker' }
+    );
+  }
 });
 
 interface CacheStats {
@@ -104,6 +138,9 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
     previousVersion: details.previousVersion
   });
   
+  // Initialize lifecycle manager
+  await lifecycleManager.initialize();
+  
   // Set default settings and initialize installation auth
   if (details.reason === 'install') {
     logger.info('[Service Worker] First installation - setting defaults and initializing auth');
@@ -116,14 +153,13 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
     await asyncManager.execute(
       'init-installation-auth',
       async () => {
-        try {
+        await safe(async () => {
           logger.info('[Service Worker] Starting installation auth initialization...');
           await InstallationAuth.initialize();
           logger.info('[Service Worker] Installation auth initialized successfully');
-        } catch (error) {
-          logger.error('[Service Worker] Failed to initialize installation authentication:', error);
-          // Continue without authentication - user can still use their own API key
-        }
+        }, 
+        '[Service Worker] Failed to initialize installation authentication');
+        // Continue without authentication - user can still use their own API key
       },
       { description: 'Initialize installation auth', preventDuplicates: true }
     );
@@ -137,15 +173,14 @@ chrome.runtime.onInstalled.addListener(async (details: chrome.runtime.InstalledD
     await asyncManager.execute(
       'check-init-auth-update',
       async () => {
-        try {
+        await safe(async () => {
           const installationData = await InstallationAuth.getInstallationData();
           if (!installationData) {
             await InstallationAuth.initialize();
           }
-        } catch (error) {
-          logger.error('Failed to initialize authentication on update:', error);
-          // Continue without authentication
-        }
+        }, 
+        'Failed to initialize authentication on update');
+        // Continue without authentication
       },
       { description: 'Check and init auth on update', preventDuplicates: true }
     );
@@ -164,31 +199,31 @@ async function loadSettings(): Promise<void> {
   }
   
   // Create new loading promise
-  settingsLoadPromise = (async () => {
-    try {
-      const result = await chrome.storage.sync.get([
-        STORAGE_KEYS.USER_SETTINGS,
-        STORAGE_KEYS.SITE_SETTINGS
-      ]);
-      
-      // Validate loaded settings
-      state.settings = validator.validateSettings(result[STORAGE_KEYS.USER_SETTINGS] || DEFAULT_SETTINGS);
-      
-      // Validate site settings
-      const siteSettings = result[STORAGE_KEYS.SITE_SETTINGS] || {};
-      state.siteSettings = new Map();
-      for (const [domain, settings] of Object.entries(siteSettings) as [string, any][]) {
-        const validDomain = validator.validateDomain(domain);
-        if (validDomain) {
-          state.siteSettings.set(validDomain, validator.validateSiteSettings(settings));
-        }
+  settingsLoadPromise = safe(async () => {
+    const result = await chrome.storage.sync.get([
+      STORAGE_KEYS.USER_SETTINGS,
+      STORAGE_KEYS.SITE_SETTINGS
+    ]);
+    
+    // Validate loaded settings
+    state.settings = validator.validateSettings(result[STORAGE_KEYS.USER_SETTINGS] || DEFAULT_SETTINGS);
+    
+    // Validate site settings
+    const siteSettings = result[STORAGE_KEYS.SITE_SETTINGS] || {};
+    state.siteSettings = new Map();
+    for (const [domain, settings] of Object.entries(siteSettings) as [string, any][]) {
+      const validDomain = validator.validateDomain(domain);
+      if (validDomain) {
+        state.siteSettings.set(validDomain, validator.validateSiteSettings(settings));
       }
-      
-    } catch (error) {
-      logger.error('Error loading settings', error);
-      state.settings = DEFAULT_SETTINGS;
     }
-  })();
+  }, 
+  'Error loading settings'
+  ).catch(() => {
+    // On error, use defaults
+    state.settings = DEFAULT_SETTINGS;
+    state.siteSettings = new Map();
+  });
   
   // Clear the promise after completion
   try {
@@ -204,23 +239,21 @@ chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.Messa
   
   // Handle async responses
   (async () => {
-    try {
-      
+    const result = await safe(async () => {
       // Validate message security
       securityManager.validateMessage(request, sender);
       
       const response = await handleMessage(request, sender);
       
-      
       // Create secure response
       const secureResponse = await securityManager.createSecureMessage('response', response);
       
-      
-      sendResponse(secureResponse);
-    } catch (error) {
-      logger.error('Message handler error', error);
-      sendResponse({ error: error instanceof Error ? error.message : 'Unknown error', secure: false });
-    }
+      return secureResponse;
+    }, 
+    'Message handler error',
+    { error: 'Message handling failed', secure: false });
+    
+    sendResponse(result);
   })();
   
   return true; // Keep channel open for async response
@@ -370,6 +403,13 @@ async function updateSiteSettings(hostname: string, settings: Partial<SiteSettin
 
 // Get translations (with caching and API calls) with rate limiting
 async function getTranslations(words: string[], language: string): Promise<any> {
+  // Register this as a critical operation with lifecycle manager
+  const cleanup = await lifecycleManager.startOperation({
+    id: `translation_${Date.now()}`,
+    description: `Translating ${words.length} words to ${language}`,
+    critical: true,
+    timeout: 30000 // 30 second timeout
+  });
   // Apply rate limiting first
   const rateCheck = await rateLimiter.checkLimit('translation', 'global');
   if (!rateCheck.allowed) {
@@ -398,7 +438,7 @@ async function getTranslations(words: string[], language: string): Promise<any> 
         return { translations: {}, error: 'No valid words to translate' };
       }
       
-      try {
+      const result = await safe(async () => {
         // Check usage limits
         const storage = getStorage();
         const canTranslate = await storage.canTranslateWords(validWords.length);
@@ -432,13 +472,17 @@ async function getTranslations(words: string[], language: string): Promise<any> 
         state.cacheStats.misses += cacheInfo.misses;
         
         return result;
-      } catch (error) {
-        logger.error('Translation error:', error);
-        return { 
-          translations: {}, 
-          error: error instanceof Error ? error.message : 'Translation failed'
-        };
-      }
+      }, 
+      'Translation error',
+      { 
+        translations: {}, 
+        error: 'Translation failed'
+      });
+      
+      // Always cleanup lifecycle operation
+      cleanup();
+      
+      return result;
     },
     { description: 'Get translations from API', preventDuplicates: false }
   );
@@ -450,7 +494,7 @@ async function logPerformance(metrics: PerformanceMetrics): Promise<{ success: b
   const today = new Date().toISOString().split('T')[0];
   const storageKey = `${STORAGE_KEYS.DAILY_STATS}_${today}`;
   
-  try {
+  await safe(async () => {
     const result = await chrome.storage.local.get(storageKey);
     const stats: DailyStats = result[storageKey] || {
       pageLoads: 0,
@@ -468,9 +512,7 @@ async function logPerformance(metrics: PerformanceMetrics): Promise<{ success: b
     
     // Clean up old stats (keep last 7 days)
     cleanupOldStats();
-  } catch (error) {
-    logger.error('Error logging performance', error);
-  }
+  }, 'Error logging performance');
   
   return { success: true };
 }
@@ -491,7 +533,7 @@ function getCacheStats(): { cacheSize: number; hitRate: number; hits: number; mi
 // Get context for a word
 async function getContext(word: string, translation: string, language: string, sentence?: string): Promise<any> {
   
-  try {
+  return await safe(async () => {
     // Dynamically import modules
     const [{ translator }, { getStorage }] = await Promise.all([
       import('../features/translation/translator'),
@@ -530,13 +572,12 @@ async function getContext(word: string, translation: string, language: string, s
     }
     
     return { context };
-  } catch (error) {
-    logger.error('Context fetch error:', error);
-    return { 
-      context: null, 
-      error: error instanceof Error ? error.message : 'Context fetch failed'
-    };
-  }
+  }, 
+  'Context fetch error',
+  { 
+    context: null, 
+    error: 'Context fetch failed'
+  });
 }
 
 // Clean up old statistics
@@ -603,7 +644,7 @@ async function getDailyUsage(): Promise<{
   wordsRemaining: number;
   explanationsRemaining: number;
 }> {
-  try {
+  return await safe(async () => {
     const { getStorage } = await import('../features/settings/storage');
     const storage = getStorage();
     const stats = await storage.getUsageStats();
@@ -613,24 +654,25 @@ async function getDailyUsage(): Promise<{
       wordsRemaining: stats.isPlus ? Infinity : Math.max(0, stats.wordsLimit - stats.wordsToday),
       explanationsRemaining: stats.isPlus ? Infinity : Math.max(0, stats.explanationsLimit - stats.explanationsToday)
     };
-  } catch (error) {
-    logger.error('Error getting daily usage', error);
-    return { 
-      wordsToday: 0, 
-      wordsLimit: 100, 
-      explanationsToday: 0,
-      explanationsLimit: 100,
-      isPlus: false, 
-      wordsRemaining: 100,
-      explanationsRemaining: 100
-    };
-  }
+  }, 
+  'Error getting daily usage',
+  { 
+    wordsToday: 0, 
+    wordsLimit: 100, 
+    explanationsToday: 0,
+    explanationsLimit: 100,
+    isPlus: false, 
+    wordsRemaining: 100,
+    explanationsRemaining: 100,
+    wordsPercentage: 0,
+    explanationsPercentage: 0
+  });
 }
 
 
 // Get context explanation for a word
 async function getContextExplanation(request: { word: string; translation: string; language: string; sentence: string }): Promise<any> {
-  try {
+  return await safe(async () => {
     // Import context helper
     const { contextHelper } = await import('../features/translation/explainer');
     
@@ -642,15 +684,14 @@ async function getContextExplanation(request: { word: string; translation: strin
     );
     
     return { explanation };
-  } catch (error) {
-    logger.error('Error getting context explanation', error);
-    return { 
-      explanation: {
-        error: true,
-        explanation: 'Unable to load explanation.'
-      }
-    };
-  }
+  }, 
+  'Error getting context explanation',
+  { 
+    explanation: {
+      error: true,
+      explanation: 'Unable to load explanation.'
+    }
+  });
 }
 
 // Generate context using AI (Claude Haiku) with AsyncManager and rate limiting
@@ -673,43 +714,45 @@ async function generateContext(prompt: string): Promise<{ text?: string; error?:
     const language = wordMatch?.[3] || '';
     
     // Call Cloudflare Worker with context request - using AsyncManager and rate limiting
-    return await rateLimiter.withRateLimit(
-      'context',
-      'global',
-      async () => {
-        const response = await asyncManager.fetch(
-          'generate-context',
-          API_CONFIG.TRANSLATOR_API,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
+    const result = await safe(async () => {
+      return await rateLimiter.withRateLimit(
+        'context',
+        'global',
+        async () => {
+          const response = await asyncManager.fetch(
+            'generate-context',
+            API_CONFIG.TRANSLATOR_API,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                type: 'context',
+                prompt,
+                word,
+                translation,
+                language
+              })
             },
-            body: JSON.stringify({
-              type: 'context',
-              prompt,
-              word,
-              translation,
-              language
-            })
-          },
-          { description: 'Generate AI context explanation' }
-        );
-        
-        const result = await response.json();
-        
-        if (result.error) {
-          throw new Error(result.error);
+            { description: 'Generate AI context explanation' }
+          );
+          
+          const result = await response.json();
+          
+          if (result.error) {
+            throw new Error(result.error);
+          }
+          
+          return {
+            text: JSON.stringify(result.explanation)
+          };
         }
-        
-        return {
-          text: JSON.stringify(result.explanation)
-        };
-      }
-    );
-  } catch (error) {
-    logger.error('Error generating context', error);
+      );
+    }, 'Error generating context');
     
+    return result;
+  } catch (error) {
     // Check if it's a rate limit error
     if (error && typeof error === 'object' && 'rateLimitExceeded' in error) {
       const rlError = error as any;
@@ -739,15 +782,33 @@ asyncManager.execute(
         logger.warn('Cache hit rate below threshold', stats.hitRate);
       }
       
-      // Check memory usage
-      if (chrome.runtime.getManifest()) {
-        // This is a simplified check - in production we'd use more sophisticated monitoring
-        const estimatedMemory = state.translationCache.size * 100; // ~100 bytes per entry
-        if (estimatedMemory > PERFORMANCE_LIMITS.MAX_MEMORY_MB * 1024 * 1024) {
-          logger.warn('Memory usage high, clearing cache');
-          state.translationCache.clear();
-          state.cacheStats = { hits: 0, misses: 0, size: 0 };
+      // Check memory usage with proper monitoring
+      const memoryMonitor = getMemoryMonitor();
+      const memoryStats = await memoryMonitor.checkMemory();
+      const action = memoryMonitor.getRecommendedAction(memoryStats);
+      
+      if (action === 'cleanup' || action === 'reload') {
+        logger.warn('[Worker] Memory usage high, clearing caches', {
+          stats: memoryMonitor.getFormattedStats(memoryStats),
+          action
+        });
+        
+        // Clear translation cache
+        state.translationCache.clear();
+        state.cacheStats = { hits: 0, misses: 0, size: 0 };
+        
+        // Clear site settings cache if needed
+        if (action === 'reload' && state.siteSettings.size > 100) {
+          const essentialDomains = Array.from(state.siteSettings.keys()).slice(0, 20);
+          const essentialSettings = new Map();
+          essentialDomains.forEach(domain => {
+            essentialSettings.set(domain, state.siteSettings.get(domain));
+          });
+          state.siteSettings = essentialSettings;
         }
+        
+        // Trigger garbage collection
+        await memoryMonitor.forceGarbageCollection();
       }
       
       // Wait for next check interval
@@ -759,29 +820,24 @@ asyncManager.execute(
 
 // Get API key
 async function getApiKey(): Promise<{ apiKey: string }> {
-  try {
+  return await safe(async () => {
     const key = await secureCrypto.getApiKey();
     return { apiKey: key || '' };
-  } catch (error) {
-    logger.error('Error getting API key:', error);
-    return { apiKey: '' };
-  }
+  }, 'Error getting API key', { apiKey: '' });
 }
 
 // Set API key
 async function setApiKey(apiKey: string | null): Promise<{ success: boolean; error?: string }> {
-  try {
+  return await safe(async () => {
     await secureCrypto.storeApiKey(apiKey);
     return { success: true };
-  } catch (error) {
-    logger.error('Error setting API key:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
+  }, 'Error setting API key')
+    .catch(() => ({ success: false, error: 'Failed to set API key' }));
 }
 
 // Get learning statistics
 async function getLearningStats(): Promise<{ stats: any }> {
-  try {
+  return await safe(async () => {
     // Get current language from settings
     const settings = state.settings || DEFAULT_SETTINGS;
     const language = settings.targetLanguage || 'spanish';
@@ -794,39 +850,33 @@ async function getLearningStats(): Promise<{ stats: any }> {
     const stats = await storage.getLearningStats(language);
     
     return { stats };
-  } catch (error) {
-    logger.error('Error getting learning stats', error);
-    return { 
-      stats: {
-        totalWords: 0,
-        masteredWords: 0,
-        wordsInProgress: 0,
-        wordsDueForReview: 0,
-        averageMastery: 0,
-        todayReviews: 0
-      }
-    };
-  }
+  }, 'Error getting learning stats', {
+    stats: {
+      totalWords: 0,
+      masteredWords: 0,
+      wordsInProgress: 0,
+      wordsDueForReview: 0,
+      averageMastery: 0,
+      todayReviews: 0
+    }
+  });
 }
 
 // Set Plus status for the user
 async function setPlusStatus(isPlus: boolean): Promise<{ success: boolean }> {
-  try {
+  return await safe(async () => {
     const { getStorage } = await import('../features/settings/storage');
     const storage = getStorage();
     const success = await storage.setPlusStatus(isPlus);
     
     logger.info('Plus status updated', { isPlus });
     return { success };
-  } catch (error) {
-    logger.error('Error setting plus status', error);
-    return { success: false };
-  }
+  }, 'Error setting plus status', { success: false });
 }
 
 // Get rate limit information from last API response or storage
 async function getRateLimits(): Promise<any> {
-  try {
+  return await safe(async () => {
     // Get cached rate limit info
     const result = await chrome.storage.local.get(['rateLimitInfo']);
     const cached = result.rateLimitInfo;
@@ -858,40 +908,49 @@ async function getRateLimits(): Promise<any> {
     };
     
     return { limits };
-  } catch (error) {
-    logger.error('Failed to get rate limits:', error);
-    return {
-      limits: {
-        translationLimits: { hourlyRemaining: 100, hourlyLimit: 100, dailyRemaining: 1000, dailyLimit: 1000 },
-        aiLimits: { hourlyRemaining: 10, hourlyLimit: 10, dailyRemaining: 100, dailyLimit: 100 },
-        nextResetIn: { hourly: 60, daily: 24 }
-      }
-    };
-  }
+  }, 'Failed to get rate limits', {
+    limits: {
+      translationLimits: { hourlyRemaining: 100, hourlyLimit: 100, dailyRemaining: 1000, dailyLimit: 1000 },
+      aiLimits: { hourlyRemaining: 10, hourlyLimit: 10, dailyRemaining: 100, dailyLimit: 100 },
+      nextResetIn: { hourly: 60, daily: 24 }
+    }
+  });
 }
 
 // Initialize settings on service worker startup with AsyncManager
 asyncManager.execute(
   'service-worker-init',
   async () => {
-    try {
+    await safe(async () => {
       await loadSettings();
       
       // Ensure InstallationAuth is initialized
-      try {
+      await safe(async () => {
         const installationData = await InstallationAuth.getInstallationData();
         if (!installationData) {
           await InstallationAuth.initialize();
         }
-      } catch (error) {
-        logger.error('Failed to ensure installation auth:', error);
-      }
-    } catch (error) {
-      logger.error('Failed to initialize service worker settings:', error);
-    }
+      }, 'Failed to ensure installation auth');
+    }, 'Failed to initialize service worker settings');
   },
   { description: 'Initialize service worker', preventDuplicates: true }
 );
+
+// Clean up resources on extension suspend to prevent memory leaks
+chrome.runtime.onSuspend?.addListener(() => {
+  logger.info('[Service Worker] Extension suspending - cleaning up resources');
+  
+  // Clean up all singleton instances
+  asyncManager.cleanup();
+  rateLimiter.destroy();
+  offlineManager.destroy();
+  
+  // Clear state maps
+  state.siteSettings.clear();
+  state.translationCache.clear();
+  
+  logger.info('[Service Worker] Cleanup complete');
+});
 
 // Export for testing
 if (typeof module !== 'undefined' && module.exports) {

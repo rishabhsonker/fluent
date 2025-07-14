@@ -3,6 +3,7 @@ import { SUPPORTED_LANGUAGES } from '../../../shared/constants';
 import BlacklistManager from './components/BlacklistManager';
 import Settings from './components/Settings';
 import RateLimitStatus from './components/RateLimitStatus';
+import { useErrorHandler } from '../utils/handler';
 import type { UserSettings, LanguageCode, SupportedLanguage } from '../../../shared/types';
 
 type TabType = 'main' | 'blacklist';
@@ -32,6 +33,7 @@ function App(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<TabType>('main');
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [learningStats, setLearningStats] = useState<LearningStats | null>(null);
+  const errorHandler = useErrorHandler('App');
 
   useEffect(() => {
     loadSettings();
@@ -39,31 +41,35 @@ function App(): React.JSX.Element {
   }, []);
 
   async function loadSettings(): Promise<void> {
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }) as ChromeMessageResponse;
-      if (response.settings) {
-        setSettings(response.settings);
+    await errorHandler.withErrorHandling(
+      async () => {
+        const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }) as ChromeMessageResponse;
+        if (response.settings) {
+          setSettings(response.settings);
+        }
+        setSiteEnabled(response.siteEnabled ?? true);
+        setCurrentSite(response.hostname || 'This site');
+        setLoading(false);
+      },
+      'loadSettings',
+      {
+        onError: () => setLoading(false)
       }
-      setSiteEnabled(response.siteEnabled ?? true);
-      setCurrentSite(response.hostname || 'This site');
-      setLoading(false);
-    } catch (error) {
-      // Error loading settings - fail silently in production
-      setLoading(false);
-    }
+    );
   }
 
   async function loadLearningStats(): Promise<void> {
-    try {
-      const response = await chrome.runtime.sendMessage({ 
-        type: 'GET_LEARNING_STATS'
-      }) as ChromeMessageResponse;
-      if (response.stats) {
-        setLearningStats(response.stats);
-      }
-    } catch (error) {
-      // Error loading stats - fail silently in production
-    }
+    await errorHandler.withErrorHandling(
+      async () => {
+        const response = await chrome.runtime.sendMessage({ 
+          type: 'GET_LEARNING_STATS'
+        }) as ChromeMessageResponse;
+        if (response.stats) {
+          setLearningStats(response.stats);
+        }
+      },
+      'loadLearningStats'
+    );
   }
 
   async function toggleSite(): Promise<void> {

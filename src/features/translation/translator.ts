@@ -45,6 +45,8 @@ import { InstallationAuth } from '../auth/auth';
 import { offlineManager } from '../../shared/offline';
 import { translationCache } from '../../shared/cache';
 import { fetchWithRetry, NetworkError } from '../../shared/network';
+import { safe, chromeCall } from '../../shared/utils/helpers';
+import { getErrorHandler } from '../../shared/utils/error-handler';
 import type { 
   Translation, 
   TranslationResult, 
@@ -83,23 +85,24 @@ export class SimpleTranslator {
   
   // Load recent translations from storage
   private async loadStorageCache(): Promise<void> {
-    try {
-      const stored = await storage.get(STORAGE_KEYS.TRANSLATION_CACHE) as StorageCache | null;
-      if (stored?.translations) {
-        // Load recent translations into memory cache
-        const entries = Object.entries(stored.translations);
-        const recentEntries = entries.slice(-500); // Load last 500
-        
-        recentEntries.forEach(([key, value]) => {
-          const [language, ...wordParts] = key.split(':');
-          const word = wordParts.join(':');
-          translationCache.setTranslation(word, language, value);
-        });
-        
-        logger.info('Loaded translations from storage', { count: recentEntries.length });
-      }
-    } catch (error) {
-      logger.error('Failed to load cache:', error);
+    const stored = await chromeCall(
+      () => storage.get(STORAGE_KEYS.TRANSLATION_CACHE),
+      'translator.loadStorageCache',
+      null
+    ) as StorageCache | null;
+    
+    if (stored?.translations) {
+      // Load recent translations into memory cache
+      const entries = Object.entries(stored.translations);
+      const recentEntries = entries.slice(-500); // Load last 500
+      
+      recentEntries.forEach(([key, value]) => {
+        const [language, ...wordParts] = key.split(':');
+        const word = wordParts.join(':');
+        translationCache.setTranslation(word, language, value);
+      });
+      
+      logger.info('Loaded translations from storage', { count: recentEntries.length });
     }
   }
   
@@ -146,24 +149,25 @@ export class SimpleTranslator {
     // Fetch uncached words
     if (uncachedWords.length > 0) {
       try {
-        const apiTranslations = await this.fetchTranslations(
-          uncachedWords,
-          validLanguage,
-          options.apiKey
-        );
-        
-        // Update cache and results
-        for (const [word, translation] of Object.entries(apiTranslations)) {
-          translations[word] = translation;
-          const cacheKey = `${validLanguage}:${word.toLowerCase()}`;
-          await this.updateCache(cacheKey, translation);
-        }
+        await safe(async () => {
+          const apiTranslations = await this.fetchTranslations(
+            uncachedWords,
+            validLanguage,
+            options.apiKey
+          );
+          
+          // Update cache and results
+          for (const [word, translation] of Object.entries(apiTranslations)) {
+            translations[word] = translation;
+            const cacheKey = `${validLanguage}:${word.toLowerCase()}`;
+            await this.updateCache(cacheKey, translation);
+          }
+        }, 'translator.translate');
       } catch (error) {
-        logger.error('Translation failed:', error);
         // Return partial results on error
         return {
           translations,
-          error: error instanceof Error ? error.message : 'Translation failed'
+          error: 'Translation failed'
         };
       }
     }
@@ -184,15 +188,16 @@ export class SimpleTranslator {
     }
     
     // L2: Storage cache
-    try {
-      const stored = await storage.get(STORAGE_KEYS.TRANSLATION_CACHE) as StorageCache | null;
-      if (stored?.translations?.[key]) {
-        // Add to memory cache for next time
-        translationCache.setTranslation(word, language, stored.translations[key]);
-        return stored.translations[key];
-      }
-    } catch (error) {
-      logger.error('Cache read error:', error);
+    const stored = await chromeCall(
+      () => storage.get(STORAGE_KEYS.TRANSLATION_CACHE),
+      'translator.getFromCache',
+      null
+    ) as StorageCache | null;
+    
+    if (stored?.translations?.[key]) {
+      // Add to memory cache for next time
+      translationCache.setTranslation(word, language, stored.translations[key]);
+      return stored.translations[key];
     }
     
     return null;
@@ -208,7 +213,7 @@ export class SimpleTranslator {
     translationCache.setTranslation(word, language, value);
     
     // Update storage cache
-    try {
+    await chromeCall(async () => {
       const stored = await storage.get(STORAGE_KEYS.TRANSLATION_CACHE) as StorageCache || 
         { translations: {}, lastUpdated: Date.now() };
       
@@ -227,9 +232,7 @@ export class SimpleTranslator {
       }
       
       await storage.set(STORAGE_KEYS.TRANSLATION_CACHE, stored);
-    } catch (error) {
-      logger.error('Cache write error:', error);
-    }
+    }, 'translator.updateCache');
   }
   
   
@@ -292,24 +295,31 @@ export class SimpleTranslator {
       });
       
       if (!response.ok) {
+        const errorHandler = getErrorHandler();
         let error;
-        try {
-          error = await response.json();
-        } catch (e) {
-          error = { error: 'Failed to parse error response' };
-        }
-        logger.error('Translation API error:', {
-          status: response.status,
-          error: error,
-          request: { words, targetLanguage: langCode, originalTargetLanguage: targetLanguage },
-          requestBody: JSON.stringify({ words, targetLanguage: langCode, apiKey }),
-          authHeaders: {
-            hasAuth: !!authHeaders['Authorization'],
-            hasInstallationId: !!authHeaders['X-Installation-Id'],
-            hasTimestamp: !!authHeaders['X-Timestamp'],
-            hasSignature: !!authHeaders['X-Signature']
+        
+        error = await safe(
+          () => response.json(),
+          'translator.parseErrorResponse',
+          { error: 'Failed to parse error response' }
+        );
+        
+        errorHandler.handleError(new Error(error.error || 'Translation failed'), {
+          operation: 'translator.fetchTranslations',
+          component: 'translator',
+          extra: {
+            status: response.status,
+            error: error,
+            request: { words, targetLanguage: langCode, originalTargetLanguage: targetLanguage },
+            authHeaders: {
+              hasAuth: !!authHeaders['Authorization'],
+              hasInstallationId: !!authHeaders['X-Installation-Id'],
+              hasTimestamp: !!authHeaders['X-Timestamp'],
+              hasSignature: !!authHeaders['X-Signature']
+            }
           }
         });
+        
         throw new Error(error.error || 'Translation failed');
       }
       
@@ -331,8 +341,9 @@ export class SimpleTranslator {
         };
         
         // Store in local storage for popup to access
-        chrome.storage.local.set({ rateLimitInfo }).catch(err => 
-          logger.error('Failed to store rate limit info:', err)
+        await chromeCall(
+          () => chrome.storage.local.set({ rateLimitInfo }),
+          'translator.setRateLimitInfo'
         );
       }
       
@@ -388,16 +399,17 @@ export class SimpleTranslator {
     }
     
     // Check storage cache
-    try {
-      const stored = await storage.get(STORAGE_KEYS.CONTEXT_CACHE) as any;
-      if (stored?.contexts?.[cacheKey]) {
-        // Add to memory cache
-        const context = stored.contexts[cacheKey];
-        translationCache.setContext(word, validLanguage, context);
-        return context;
-      }
-    } catch (error) {
-      logger.error('Context cache read error:', error);
+    const stored = await chromeCall(
+      () => storage.get(STORAGE_KEYS.CONTEXT_CACHE),
+      'translator.getContextCache',
+      null
+    ) as any;
+    
+    if (stored?.contexts?.[cacheKey]) {
+      // Add to memory cache
+      const context = stored.contexts[cacheKey];
+      translationCache.setContext(word, validLanguage, context);
+      return context;
     }
     
     
@@ -408,7 +420,7 @@ export class SimpleTranslator {
       // Check cost limits for AI context
       await costGuard.checkCost('context', 100); // Estimate 100 chars for context
       
-      try {
+      return await safe(async () => {
         // Use proper installation-based authentication
         const authHeaders = await (await import('../auth/auth')).InstallationAuth.getAuthHeaders();
         
@@ -458,20 +470,15 @@ export class SimpleTranslator {
           translationCache.setContext(word, validLanguage, context);
           
           // Update storage cache
-          try {
+          await chromeCall(async () => {
             const stored = await storage.get(STORAGE_KEYS.CONTEXT_CACHE) || { contexts: {} };
             stored.contexts[cacheKey] = context;
             await storage.set(STORAGE_KEYS.CONTEXT_CACHE, stored);
-          } catch (error) {
-            logger.error('Context cache write error:', error);
-          }
+          }, 'translator.setContextCache');
         }
         
         return context;
-      } catch (error) {
-        logger.error('Failed to fetch context:', error);
-        return null;
-      }
+      }, 'translator.getContext', null);
     });
   }
 }

@@ -4,6 +4,7 @@
 
 import { logger } from './logger';
 import { storage } from '../features/settings/storage';
+import { safe, chromeCall } from './utils/helpers';
 import type { Translation, LanguageCode } from './types';
 
 interface OfflineData {
@@ -40,38 +41,44 @@ export class OfflineManager {
    * Initialize offline support
    */
   async initialize(): Promise<void> {
-    try {
-      // Load existing offline data
-      await this.loadOfflineData();
+    await safe(
+      async () => {
+        // Load existing offline data
+        await this.loadOfflineData();
 
-      // Check if update is needed
-      if (this.shouldUpdate()) {
-        // Update in background
-        this.updateOfflineData().catch(error => {
-          logger.error('Failed to update offline data:', error);
-        });
-      }
+        // Check if update is needed
+        if (this.shouldUpdate()) {
+          // Update in background
+          this.updateOfflineData().catch(error => {
+            logger.error('[Offline] Update failed:', error);
+          });
+        }
 
-      logger.info('Offline manager initialized');
-    } catch (error) {
-      logger.error('Failed to initialize offline manager:', error);
-    }
+        logger.info('Offline manager initialized');
+      },
+      'offline.initialize'
+    );
   }
 
   /**
    * Load offline data from storage
    */
   private async loadOfflineData(): Promise<void> {
-    try {
-      const stored = await chrome.storage.local.get(this.STORAGE_KEY);
-      if (stored[this.STORAGE_KEY]) {
-        this.offlineData = stored[this.STORAGE_KEY];
-        this.isLoaded = true;
-        logger.info(`Loaded offline data: ${this.getWordCount()} words`);
-      }
-    } catch (error) {
-      logger.error('Failed to load offline data:', error);
-    }
+    await safe(
+      async () => {
+        const stored = await chromeCall(
+          () => chrome.storage.local.get(this.STORAGE_KEY),
+          'offline.loadOfflineData',
+          {}
+        );
+        if (stored[this.STORAGE_KEY]) {
+          this.offlineData = stored[this.STORAGE_KEY];
+          this.isLoaded = true;
+          logger.info(`Loaded offline data: ${this.getWordCount()} words`);
+        }
+      },
+      'offline.loadOfflineData'
+    );
   }
 
   /**
@@ -88,57 +95,61 @@ export class OfflineManager {
    * Update offline data
    */
   private async updateOfflineData(): Promise<void> {
-    try {
-      logger.info('Updating offline data...');
+    await safe(
+      async () => {
+        logger.info('Updating offline data...');
 
-      // Load word frequency lists
-      const languages: LanguageCode[] = ['spanish', 'french', 'german'];
-      const offlineData: OfflineData = {
-        translations: {} as Record<LanguageCode, Translation>,
-        wordLists: {} as Record<LanguageCode, string[]>,
-        lastUpdated: Date.now(),
-        version: '1.0'
-      };
+        // Load word frequency lists
+        const languages: LanguageCode[] = ['spanish', 'french', 'german'];
+        const offlineData: OfflineData = {
+          translations: {} as Record<LanguageCode, Translation>,
+          wordLists: {} as Record<LanguageCode, string[]>,
+          lastUpdated: Date.now(),
+          version: '1.0'
+        };
 
-      for (const lang of languages) {
-        const wordList = await this.loadWordFrequencyList(lang);
-        offlineData.wordLists[lang] = wordList;
-        offlineData.translations[lang] = {};
-      }
+        for (const lang of languages) {
+          const wordList = await this.loadWordFrequencyList(lang);
+          offlineData.wordLists[lang] = wordList;
+          offlineData.translations[lang] = {};
+        }
 
-      // Preload translations for common words
-      await this.preloadTranslations(offlineData);
+        // Preload translations for common words
+        await this.preloadTranslations(offlineData);
 
-      // Save to storage
-      await this.saveOfflineData(offlineData);
-      this.offlineData = offlineData;
-      this.isLoaded = true;
+        // Save to storage
+        await this.saveOfflineData(offlineData);
+        this.offlineData = offlineData;
+        this.isLoaded = true;
 
-      logger.info(`Updated offline data: ${this.getWordCount()} words`);
-    } catch (error) {
-      logger.error('Failed to update offline data:', error);
-    }
+        logger.info(`Updated offline data: ${this.getWordCount()} words`);
+      },
+      'offline.updateOfflineData'
+    );
   }
 
   /**
    * Load word frequency list for a language
    */
   private async loadWordFrequencyList(language: LanguageCode): Promise<string[]> {
-    try {
-      // Try to load from bundled data
-      const response = await fetch(chrome.runtime.getURL(`data/common-words-en.json`));
-      if (response.ok) {
-        const data: WordFrequency[] = await response.json();
-        return data
-          .slice(0, Math.floor(this.MAX_OFFLINE_WORDS / 3))
-          .map(item => item.word);
-      }
-    } catch (error) {
-      logger.error(`Failed to load word list for ${language}:`, error);
-    }
+    const result = await safe(
+      async () => {
+        // Try to load from bundled data
+        const response = await fetch(chrome.runtime.getURL(`data/common-words-en.json`));
+        if (response.ok) {
+          const data: WordFrequency[] = await response.json();
+          return data
+            .slice(0, Math.floor(this.MAX_OFFLINE_WORDS / 3))
+            .map(item => item.word);
+        }
+        return null;
+      },
+      'offline.loadWordFrequencyList',
+      null
+    );
 
     // Return default common words if loading fails
-    return this.getDefaultCommonWords();
+    return result || this.getDefaultCommonWords();
   }
 
   /**
@@ -215,24 +226,33 @@ export class OfflineManager {
    * Save offline data to storage
    */
   private async saveOfflineData(data: OfflineData): Promise<void> {
-    try {
-      // Compress data by removing duplicates
-      const compressed = this.compressOfflineData(data);
-      
-      await chrome.storage.local.set({
-        [this.STORAGE_KEY]: compressed
-      });
-    } catch (error) {
-      logger.error('Failed to save offline data:', error);
-      
+    await safe(
+      async () => {
+        // Compress data by removing duplicates
+        const compressed = this.compressOfflineData(data);
+        
+        await chromeCall(
+          () => chrome.storage.local.set({
+            [this.STORAGE_KEY]: compressed
+          }),
+          'offline.saveOfflineData'
+        );
+      },
+      'offline.saveOfflineData'
+    ).catch(async error => {
       // If storage is full, try to save essential data only
       if (error instanceof Error && error.message?.includes('QUOTA_BYTES')) {
         const essential = this.getEssentialData(data);
-        await chrome.storage.local.set({
-          [this.STORAGE_KEY]: essential
-        });
+        await chromeCall(
+          () => chrome.storage.local.set({
+            [this.STORAGE_KEY]: essential
+          }),
+          'offline.saveEssentialData'
+        );
+      } else {
+        throw error;
       }
-    }
+    });
   }
 
   /**
@@ -633,7 +653,10 @@ export class OfflineManager {
    * Clear offline data
    */
   async clear(): Promise<void> {
-    await chrome.storage.local.remove(this.STORAGE_KEY);
+    await chromeCall(
+      () => chrome.storage.local.remove(this.STORAGE_KEY),
+      'offline.clear'
+    );
     this.offlineData = null;
     this.isLoaded = false;
   }
@@ -642,8 +665,20 @@ export class OfflineManager {
    * Get storage size used
    */
   async getStorageSize(): Promise<number> {
-    const stored = await chrome.storage.local.getBytesInUse(this.STORAGE_KEY);
+    const stored = await chromeCall(
+      () => chrome.storage.local.getBytesInUse(this.STORAGE_KEY),
+      'offline.getStorageSize',
+      0
+    );
     return stored;
+  }
+
+  /**
+   * Cleanup method to prevent memory leaks
+   */
+  destroy(): void {
+    this.offlineData = null;
+    this.isLoaded = false;
   }
 }
 

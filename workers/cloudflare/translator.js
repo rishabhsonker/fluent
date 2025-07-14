@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024 Fluent Language Learning Extension. All Rights Reserved.
+ * Copyright (c) 2025 Fluent Language Learning Extension. All Rights Reserved.
  * 
  * PROPRIETARY AND CONFIDENTIAL
  * 
@@ -33,7 +33,7 @@
  * Dependencies:
  * - handler.js - Main request processing logic
  * - auth.js - Authentication and verification
- * - cache.js - KV-based caching layer
+ * - cache.js - D1-based caching layer
  * - limiter.js - Rate limiting and cost control
  * - api.js - External API integrations
  * 
@@ -43,30 +43,13 @@
  * - Environment variables in .dev.vars
  */
 
-import { logInfo, logError } from './logger.js';
+import { logError } from './logger.js';
 import { validateEnvironment, getSiteConfig } from './config.js';
-import { verifyAuthentication, handleInstallationRegistration } from './auth.js';
+import { verifyAuthentication, checkUsageLimits, trackUsage } from './auth.js';
 import { handleTranslateWithContext } from './handler.js';
 import { handleContextOnly } from './context.js';
+import { safe } from './utils.js';
 
-/**
- * Constant-time string comparison to prevent timing attacks
- * @param {string} a - First string
- * @param {string} b - Second string
- * @returns {boolean} - True if strings are equal
- */
-function constantTimeEquals(a, b) {
-  if (a.length !== b.length) {
-    return false;
-  }
-  
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  
-  return result === 0;
-}
 
 export default {
   async fetch(request, env, ctx) {
@@ -211,48 +194,47 @@ export default {
         return response;
       }
 
-      // Route: /installations/register (POST, no auth)
-      if (pathname === '/installations/register' && request.method === 'POST') {
-        // Check content length before processing
-        const contentLength = request.headers.get('content-length');
-        if (contentLength && parseInt(contentLength) > 1024) { // 1KB limit for registration
+      // Test D1 connectivity (temporary - remove in production)
+      if (pathname === '/test-db' && request.method === 'GET') {
+        if (!env.DB) {
           return new Response(JSON.stringify({ 
-            error: 'Request too large. Maximum size: 1KB' 
+            status: 'error', 
+            message: 'D1 database not configured' 
           }), {
-            status: 413,
+            status: 503,
             headers: { ...responseHeaders, 'Content-Type': 'application/json' }
           });
         }
         
-        // Strict rate limiting for registration endpoint
-        const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
-        if (env.TRANSLATION_RATE_LIMITER) {
-          const rateLimit = await env.TRANSLATION_RATE_LIMITER.limit({
-            key: `register:${clientIP}`,
-          });
+        return await safe(async () => {
+          // Test basic connectivity
+          const tables = await env.DB.prepare(`
+            SELECT name FROM sqlite_master 
+            WHERE type='table' 
+            ORDER BY name
+          `).all();
           
-          if (!rateLimit.success) {
-            return new Response(JSON.stringify({ 
-              error: 'Rate limit exceeded. Please try again later.' 
-            }), {
-              status: 429,
-              headers: {
-                ...responseHeaders,
-                'Retry-After': '300', // 5 minutes
-                'X-RateLimit-Remaining': rateLimit.remaining.toString(),
-              },
-            });
-          }
-        }
-        
-        const response = await handleInstallationRegistration(request, env, ctx);
-        
-        // Add security headers
-        Object.entries(responseHeaders).forEach(([key, value]) => {
-          response.headers.set(key, value);
-        });
-        
-        return response;
+          // Count users
+          const userCount = await env.DB.prepare(
+            "SELECT COUNT(*) as count FROM users"
+          ).first();
+          
+          return new Response(JSON.stringify({ 
+            status: 'success',
+            database: 'connected',
+            tables: tables.results.map(t => t.name),
+            users: userCount?.count || 0
+          }), {
+            status: 200,
+            headers: { ...responseHeaders, 'Content-Type': 'application/json' }
+          });
+        }, 'Database connectivity test failed', new Response(JSON.stringify({ 
+          status: 'error',
+          message: 'Database test failed' 
+        }), {
+          status: 500,
+          headers: { ...responseHeaders, 'Content-Type': 'application/json' }
+        }));
       }
 
       return new Response(JSON.stringify({ error: 'Not found' }), { 
@@ -273,72 +255,6 @@ export default {
     }
   },
 };
-
-/**
- * Verify authentication headers
- */
-async function verifyAuthentication(request, env) {
-  const authHeader = request.headers.get('Authorization');
-  const installationId = request.headers.get('X-Installation-Id');
-  const signature = request.headers.get('X-Signature');
-  const timestamp = request.headers.get('X-Timestamp');
-  
-  // Check required headers
-  if (!authHeader || !authHeader.startsWith('Bearer ') || !installationId || !signature || !timestamp) {
-    return { status: 401, message: 'Missing authentication headers' };
-  }
-  
-  // Extract token from Bearer header
-  const token = authHeader.substring(7);
-  
-  // Verify timestamp (5-minute window)
-  const requestTime = parseInt(timestamp, 10);
-  const now = Date.now();
-  if (isNaN(requestTime) || Math.abs(now - requestTime) > 300000) {
-    return { status: 401, message: 'Authentication token expired' };
-  }
-  
-  // Check if installation exists (skip for KV if not available)
-  if (env.TRANSLATION_CACHE) {
-    const installationData = await env.TRANSLATION_CACHE.get(`installation:${installationId}`);
-    if (!installationData) {
-      return { status: 401, message: 'Unknown installation' };
-    }
-  }
-  
-  // Verify signature using HMAC with the token as key
-  const message = `${installationId}-${timestamp}`;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(token),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signatureBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
-  const expectedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
-  
-  // Use constant-time comparison to prevent timing attacks
-  if (!constantTimeEquals(signature, expectedSignature)) {
-    return { status: 401, message: 'Invalid signature' };
-  }
-  
-  // Verify the Bearer token is valid (skip for KV if not available)
-  if (env.TRANSLATION_CACHE) {
-    const tokenData = await env.TRANSLATION_CACHE.get(`token:${token}`);
-    if (!tokenData) {
-      return { status: 401, message: 'Invalid token' };
-    }
-    
-    const tokenInfo = JSON.parse(tokenData);
-    if (tokenInfo.installationId !== installationId) {
-      return { status: 401, message: 'Token mismatch' };
-    }
-  }
-  
-  return null; // Authentication successful
-}
 
 // The rest of the functionality has been moved to modular files
 

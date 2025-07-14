@@ -9,6 +9,7 @@ This worker provides the translation API and site configuration for the Fluent e
 1. Cloudflare account with Workers enabled
 2. Wrangler CLI installed (`npm install -g wrangler`)
 3. API keys configured as secrets
+4. D1 databases created
 
 ### Required Secrets
 
@@ -25,9 +26,17 @@ npx wrangler secret put CLAUDE_API_KEY
 npx wrangler secret put ALLOWED_EXTENSION_IDS
 ```
 
-### KV Namespace
+### D1 Database
 
-The worker uses a KV namespace for caching translations and storing site configuration.
+The worker uses D1 databases for:
+- Translation caching
+- User management and authentication
+- Usage tracking and analytics
+- Word progress tracking
+
+Database IDs are configured in `wrangler.toml`:
+- Production: `translator` 
+- Development: `translator-dev`
 
 ## Deployment
 
@@ -37,8 +46,8 @@ The worker uses a KV namespace for caching translations and storing site configu
 # Deploy to production
 npx wrangler deploy
 
-# Deploy to staging
-npx wrangler deploy --env staging
+# Deploy to development
+npx wrangler deploy --env development
 ```
 
 ### GitHub Actions
@@ -59,17 +68,15 @@ node sites.js block example.com
 # Add optimized configuration
 node sites.js optimize medium.com "article p" 10
 
-# Upload to KV
-node sites.js upload
-
 # List current configuration
 node sites.js list
+
+# Note: Upload/download to D1 not yet implemented
 ```
 
 ## Endpoints
 
-- `POST /translate` - Translate words (requires authentication)
-- `POST /context` - Get pronunciation and context (requires authentication)
+- `POST /translate` - Translate words with context (requires authentication)
 - `GET /site-config` - Get site configuration (public)
 - `GET /health` - Health check (requires authentication)
 
@@ -81,6 +88,10 @@ npx wrangler dev
 
 # Tail logs
 npx wrangler tail
+
+# Run database migrations
+npx wrangler d1 execute translator-dev --file=migrations/0001_initial_schema.sql
+npx wrangler d1 execute translator-dev --file=migrations/0002_add_analytics_table.sql
 ```
 
 ## Monitoring
@@ -90,3 +101,19 @@ View metrics and logs in the Cloudflare dashboard or use:
 ```bash
 npx wrangler tail --format pretty
 ```
+
+## Database Schema
+
+The D1 database includes these tables:
+- `translations` - Cached translations with context
+- `users` - User accounts and plans
+- `installations` - Extension installations
+- `user_preferences` - User settings
+- `user_tracking` - Daily usage tracking
+- `user_stats` - Lifetime statistics
+- `word_progress` - Learning progress per word
+- `billing_events` - Stripe billing events
+- `referrals` - Referral tracking
+- `analytics_events` - General analytics
+
+See `migrations/` for the complete schema.

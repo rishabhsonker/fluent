@@ -4,7 +4,8 @@
  */
 
 import { logInfo, logError } from './logger.js';
-import { checkTranslationsCache, cacheTranslations, storeContextVariations, CACHE_TTL } from './cache.js';
+import { getErrorHandler, createErrorResponse, ErrorTypes } from './error-handler.js';
+import { checkTranslationsCache, storeContextVariations, cacheTranslations } from './cache.js';
 import { applyRateLimit, checkCostLimit, updateCostTracking } from './limiter.js';
 import { callTranslatorAPI, getContextForWords } from './api.js';
 import { generateBasicContext, generateBasicContextVariations } from './context.js';
@@ -14,24 +15,50 @@ import { validateWordList, validatePayloadSize, VALIDATION_LIMITS } from './vali
  * Handle combined translation + context request
  */
 export async function handleTranslateWithContext(request, env, ctx) {
+  const errorHandler = getErrorHandler(env);
   const startTime = Date.now();
   
   // Get installation ID for rate limiting
   const installationId = request.headers.get('X-Installation-Id') || 'anonymous';
   
-  try {
+  return errorHandler.withErrorHandling(async () => {
+    let validationResult;
     // Check payload size first
     if (!validatePayloadSize(request)) {
-      return new Response(JSON.stringify({ 
-        error: `Request too large. Maximum size: ${VALIDATION_LIMITS.MAX_REQUEST_SIZE_BYTES} bytes` 
-      }), {
-        status: 413,
+      const error = new Error(`Request too large. Maximum size: ${VALIDATION_LIMITS.MAX_REQUEST_SIZE_BYTES} bytes`);
+      error.name = 'ValidationError';
+      error.status = 413;
+      return new Response(
+        JSON.stringify(createErrorResponse(error)),
+        {
+          status: 413,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+    
+    // Parse request body with error handling
+    const body = await errorHandler.withErrorHandling(
+      () => request.json(),
+      {
+        operation: 'parse-request-body',
+        component: 'handler',
+        fallbackValue: null
+      }
+    );
+    
+    if (!body) {
+      const error = new Error('Invalid JSON in request body');
+      error.name = 'ValidationError';
+      error.status = 400;
+      return new Response(
+        JSON.stringify(createErrorResponse(error)),
+        {
+          status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
     
-    // Parse request body
-    const body = await request.json();
     const { words, targetLanguage, apiKey, enableContext = true } = body;
 
     // Validate target language
@@ -47,23 +74,34 @@ export async function handleTranslateWithContext(request, env, ctx) {
     }
 
     // Validate word list with enhanced validation
-    const validationResult = validateWordList(words, targetLanguage);
+    validationResult = validateWordList(words, targetLanguage);
     if (!validationResult.valid) {
-      return new Response(JSON.stringify({ error: validationResult.error }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const error = new Error(validationResult.error);
+      error.name = 'ValidationError';
+      error.status = 400;
+      return new Response(
+        JSON.stringify(createErrorResponse(error)),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const validWords = validationResult.words;
     if (validWords.length === 0) {
-      return new Response(JSON.stringify({ 
-        error: 'No valid words found after validation',
-        filtered: validationResult.filtered 
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const error = new Error('No valid words found after validation');
+      error.name = 'ValidationError';
+      error.status = 400;
+      const errorResponse = createErrorResponse(error);
+      errorResponse.error.details = { filtered: validationResult.filtered };
+      return new Response(
+        JSON.stringify(errorResponse),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     // Check cache for translations
@@ -204,14 +242,7 @@ export async function handleTranslateWithContext(request, env, ctx) {
                     example: fullContext[word].example
                   };
                   
-                  const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
-                  cachePromises.push(
-                    env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
-                      cacheKey,
-                      JSON.stringify(combined),
-                      { expirationTtl: CACHE_TTL.TRANSLATION }
-                    )
-                  );
+                  // Context will be cached later in bulk
                 }
               }
               await Promise.all(cachePromises);
@@ -236,26 +267,18 @@ export async function handleTranslateWithContext(request, env, ctx) {
           
           translations[word] = combined;
           
-          // Only cache if we have enhanced context
-          if (enhancedContext[word]) {
-            const cacheKey = `trans:${targetLanguage}:${word.toLowerCase().trim()}`;
-            cachePromises.push(
-              env.TRANSLATION_CACHE && env.TRANSLATION_CACHE.put(
-                cacheKey, 
-                JSON.stringify(combined), 
-                { expirationTtl: CACHE_TTL.TRANSLATION }
-              )
-            );
-          }
+          // Context will be cached using cacheTranslations function
         }
       }
 
-      ctx.waitUntil(Promise.all(cachePromises));
+      // Cache all translations with context
+      ctx.waitUntil(cacheTranslations(env, translations, targetLanguage, ctx));
 
       // Update cost tracking
       if (!apiKey) {
         const charCount = wordsToTranslate.join('').length;
-        ctx.waitUntil(updateCostTracking(charCount, env));
+        // Note: Cost tracking is now implicit through usage tracking
+        // The trackUsage calls in auth.js handle incrementing counters
       }
     }
 
@@ -298,17 +321,20 @@ export async function handleTranslateWithContext(request, env, ctx) {
       },
     });
 
-  } catch (error) {
-    logError('Translation handler error', error, {
+  }, {
+    operation: 'handle-translate-request',
+    component: 'handler',
+    extra: {
       installationId,
-      wordCount: words?.length || 0,
-      validWords: validWords?.length || 0
-    });
-    return new Response(JSON.stringify({ 
-      error: 'Internal server error'
+      method: request.method,
+      url: request.url
+    },
+    fallbackValue: new Response(JSON.stringify({ 
+      error: 'Internal server error',
+      message: 'An unexpected error occurred while processing your request'
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
-    });
-  }
+    })
+  });
 }

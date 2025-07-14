@@ -10,42 +10,42 @@
  * - Production: WORKER_URL = https://translator.hq.workers.dev
  */
 
+import { safeSync } from './utils/helpers';
+
 // These will be replaced during build by Vite
 declare const __WORKER_URL__: string;
 declare const __ENVIRONMENT__: 'development' | 'production';
 declare const __BUILD_TIME__: string;
+declare const __SENTRY_DSN__: string;
 
 // Export configuration with fallbacks for local development
 export const config = {
   // Worker URL - injected at build time
   WORKER_URL: (() => {
-    try {
-      return __WORKER_URL__;
-    } catch {
-      // Fallback for local development when not built
-      return process.env.NODE_ENV === 'production' 
+    return safeSync(() => __WORKER_URL__, 'Worker URL config', 
+      process.env.NODE_ENV === 'production' 
         ? 'https://translator.hq.workers.dev'
-        : 'https://translator-dev.hq.workers.dev';
-    }
+        : 'https://translator-dev.hq.workers.dev'
+    );
   })(),
 
   // Environment - injected at build time
   ENVIRONMENT: (() => {
-    try {
-      return __ENVIRONMENT__;
-    } catch {
-      // Fallback for local development
-      return (process.env.NODE_ENV || 'development') as 'development' | 'production';
-    }
+    return safeSync(() => __ENVIRONMENT__, 'Environment config',
+      (process.env.NODE_ENV || 'development') as 'development' | 'production'
+    );
   })(),
 
   // Build timestamp - injected at build time
   BUILD_TIME: (() => {
-    try {
-      return __BUILD_TIME__;
-    } catch {
-      return new Date().toISOString();
-    }
+    return safeSync(() => __BUILD_TIME__, 'Build time config',
+      new Date().toISOString()
+    );
+  })(),
+
+  // Sentry DSN - injected at build time
+  SENTRY_DSN: (() => {
+    return safeSync(() => __SENTRY_DSN__, 'Sentry DSN config', '');
   })(),
 
   // Feature flags based on environment

@@ -6,6 +6,7 @@
 import { logger } from '../../shared/logger';
 import { API_CONFIG } from '../../shared/constants';
 import { ComponentAsyncManager } from '../../shared/async';
+import { safe } from '../../shared/utils/helpers';
 
 export interface SiteConfig {
   contentSelector: string;
@@ -58,7 +59,7 @@ export async function fetchOptimizedSiteConfig(): Promise<any> {
     return siteConfig;
   }
   
-  try {
+  const result = await safe(async () => {
     const response = await asyncManager.fetch(
       'site-config',
       `${API_CONFIG.TRANSLATOR_API}/config`,
@@ -70,8 +71,10 @@ export async function fetchOptimizedSiteConfig(): Promise<any> {
     configLoadTime = now;
     logger.debug('Optimized site config loaded:', siteConfig);
     return siteConfig;
-  } catch (error) {
-    logger.warn('Failed to fetch optimized site config, using defaults:', error);
+  }, 'Fetch optimized site config');
+  
+  if (result) {
+    return result;
   }
   
   // Return default config - API call is optional for optimization only
@@ -86,15 +89,11 @@ export async function fetchOptimizedSiteConfig(): Promise<any> {
  * Check if site should be processed using extension blocklist
  */
 export async function shouldProcessSite(): Promise<boolean> {
-  try {
+  return await safe(async () => {
     // Use the extension's blocklist manager
     const { shouldProcessCurrentSite } = await import('../settings/blocklist');
     return await shouldProcessCurrentSite();
-  } catch (error) {
-    logger.error('Failed to check blocklist:', error);
-    // Default to allowing the site if blocklist check fails
-    return true;
-  }
+  }, 'Check site blocklist', true); // Default to allowing the site if blocklist check fails
 }
 
 /**

@@ -34,6 +34,7 @@
 'use strict';
 
 import { logger } from '../../shared/logger';
+import { getMemoryMonitor } from '../../shared/monitor';
 import { 
   sanitizeText, 
   sanitizeTranslation, 
@@ -41,6 +42,7 @@ import {
   isNodeSafe
 } from '../../shared/sanitizer';
 import { validator } from '../../shared/validator';
+import { safe, safeSync } from '../../shared/utils/helpers';
 import type { 
   Translation, 
   ReplacementData, 
@@ -161,25 +163,26 @@ export class WordReplacer {
     
     // If we have storage and language, use spaced repetition
     if (this.storage && this.currentLanguage) {
-      try {
+      const selectedWords = await safe(async () => {
         // Get all word progress for current language
-        const wordsData = await this.storage.getAllWordProgress(this.currentLanguage);
+        const wordsData = await this.storage!.getAllWordProgress(this.currentLanguage!);
         
         // Import spaced repetition algorithm
         const { spacedRepetition } = await import('../learning/srs');
         
         // Use spaced repetition to select words
-        const selectedWords = spacedRepetition.selectWordsForPage(
+        return spacedRepetition.selectWordsForPage(
           wordsData,
           candidates,
           this.config.MAX_WORDS_PER_PAGE
         );
-        
+      }, 'Spaced repetition selection failed');
+      
+      // If successful, return the selected words
+      if (selectedWords) {
         return selectedWords;
-      } catch (error) {
-        logger.error('Spaced repetition selection failed:', error);
-        // Fall back to basic selection
       }
+      // Otherwise fall back to basic selection
     }
     
     // Fallback: Basic selection by score
@@ -220,7 +223,7 @@ export class WordReplacer {
     translations: Translation,
     contextMap?: Record<string, any>
   ): Promise<number> {
-    try {
+    return await safe(async () => {
       const context: ProcessingContext = {
         startTime: performance.now(),
         replacementCount: 0,
@@ -237,13 +240,11 @@ export class WordReplacer {
       for (const node of textNodes) {
         if (this.shouldStopProcessing(context)) break;
         
-        let nodeReplacements: ReplacementData[] = [];
-        try {
-          nodeReplacements = this.processNode(node, wordsToReplace, translations, context, contextMap);
-        } catch (error) {
-          logger.error('Error processing node:', error);
-          continue;
-        }
+        const nodeReplacements = safeSync(
+          () => this.processNode(node, wordsToReplace, translations, context, contextMap),
+          'Error processing node',
+          []
+        );
         
         if (nodeReplacements && nodeReplacements.length > 0) {
           nodesToProcess.push({ node, replacements: nodeReplacements });
@@ -254,12 +255,10 @@ export class WordReplacer {
       await processInChunks(
         nodesToProcess,
         async ({ node, replacements }) => {
-          try {
+          await safe(async () => {
             await this.applyReplacements(node, replacements);
             context.replacementCount += replacements.length;
-          } catch (error) {
-            logger.error('Error applying replacements:', error);
-          }
+          }, 'Error applying replacements');
         },
         {
           chunkSize: 5,
@@ -268,10 +267,7 @@ export class WordReplacer {
       );
       
       return context.replacementCount;
-    } catch (error) {
-      logger.error('Error in replaceWords:', error);
-      return 0;
-    }
+    }, 'Error in replaceWords', 0);
   }
   
   // Check if we should stop processing
@@ -441,20 +437,15 @@ export class WordReplacer {
   }
 
   // Get performance stats
-  getStats(): { wordsAnalyzed: number; wordsReplaced: number; memoryUsage: number } {
+  async getStats(): Promise<{ wordsAnalyzed: number; wordsReplaced: number; memoryUsage: string }> {
+    const memoryMonitor = getMemoryMonitor();
+    const memoryStats = await memoryMonitor.getMemoryUsage();
+    
     return {
       wordsAnalyzed: this.wordCounts.size,
       wordsReplaced: this.replacedWords.size,
-      memoryUsage: this.estimateMemoryUsage()
+      memoryUsage: memoryMonitor.getFormattedStats(memoryStats)
     };
-  }
-
-  // Estimate memory usage
-  private estimateMemoryUsage(): number {
-    // Rough estimation
-    const wordCountSize = this.wordCounts.size * 50; // ~50 bytes per entry
-    const replacedSize = this.replacedWords.size * 20; // ~20 bytes per word
-    return (wordCountSize + replacedSize) / 1024 / 1024; // MB
   }
 
   // Comprehensive cleanup

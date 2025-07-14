@@ -35,6 +35,7 @@ import { secureCrypto } from './crypto';
 import { API_CONFIG, AUTH_CONSTANTS } from '../../shared/constants';
 import { logger } from '../../shared/logger';
 import { fetchWithRetry } from '../../shared/network';
+import { safe, chromeCall } from '../../shared/utils/helpers';
 
 interface InstallationData {
   installationId: string;
@@ -51,23 +52,26 @@ export class InstallationAuth {
    * Initialize authentication on extension install/update
    */
   static async initialize(): Promise<void> {
-    try {
-      logger.info('[InstallationAuth] Checking for existing auth...');
-      const existingAuth = await this.getStoredAuth();
-      
-      if (!existingAuth) {
-        logger.info('[InstallationAuth] No existing auth found, registering new installation');
-        await this.registerNewInstallation();
-      } else if (this.shouldRefreshToken(existingAuth)) {
-        logger.info('[InstallationAuth] Token needs refresh, refreshing...');
-        await this.refreshToken(existingAuth);
-      } else {
-        logger.info('[InstallationAuth] Using existing auth');
-      }
-    } catch (error) {
-      logger.error('Failed to initialize installation auth:', error);
+    await safe(
+      async () => {
+        logger.info('[InstallationAuth] Checking for existing auth...');
+        const existingAuth = await this.getStoredAuth();
+        
+        if (!existingAuth) {
+          logger.info('[InstallationAuth] No existing auth found, registering new installation');
+          await this.registerNewInstallation();
+        } else if (this.shouldRefreshToken(existingAuth)) {
+          logger.info('[InstallationAuth] Token needs refresh, refreshing...');
+          await this.refreshToken(existingAuth);
+        } else {
+          logger.info('[InstallationAuth] Using existing auth');
+        }
+      },
+      'auth.initialize'
+    ).catch(error => {
+      // Re-throw with more specific error message
       throw new Error('Authentication initialization failed');
-    }
+    });
   }
   
   /**
@@ -125,7 +129,7 @@ export class InstallationAuth {
     
     logger.info('Attempting to register new installation');
     
-    try {
+    await safe(async () => {
       const response = await fetchWithRetry(
         `${API_CONFIG.TRANSLATOR_API}/installations/register`,
         {
@@ -187,17 +191,14 @@ export class InstallationAuth {
       
       await this.storeAuth(installationData);
       logger.info('[InstallationAuth] Successfully registered and stored new installation');
-    } catch (error) {
-      logger.error('Failed to register installation:', error);
-      throw error;
-    }
+    }, 'Register new installation');
   }
   
   /**
    * Refresh an existing token
    */
   private static async refreshToken(auth: InstallationData): Promise<void> {
-    try {
+    await safe(async () => {
       const response = await fetch(`${API_CONFIG.TRANSLATOR_API}/auth/refresh`, {
         method: 'POST',
         headers: {
@@ -229,10 +230,7 @@ export class InstallationAuth {
       
       await this.storeAuth(updatedAuth);
       logger.info('Successfully refreshed installation token');
-    } catch (error) {
-      logger.error('Failed to refresh token:', error);
-      throw error;
-    }
+    }, 'Refresh installation token');
   }
   
   /**
@@ -248,34 +246,45 @@ export class InstallationAuth {
    */
   private static async storeAuth(data: InstallationData): Promise<void> {
     const encrypted = await secureCrypto.encrypt(JSON.stringify(data));
-    await chrome.storage.local.set({
-      [this.STORAGE_KEY]: encrypted,
-    });
+    await chromeCall(
+      () => chrome.storage.local.set({
+        [this.STORAGE_KEY]: encrypted,
+      }),
+      'auth.storeAuth'
+    );
   }
   
   /**
    * Retrieve stored authentication data
    */
   private static async getStoredAuth(): Promise<InstallationData | null> {
-    try {
-      const result = await chrome.storage.local.get(this.STORAGE_KEY);
-      if (!result[this.STORAGE_KEY]) {
-        return null;
-      }
-      
-      const decrypted = await secureCrypto.decrypt(result[this.STORAGE_KEY]);
-      return JSON.parse(decrypted);
-    } catch (error) {
-      logger.error('Failed to retrieve stored auth:', error);
-      return null;
-    }
+    return safe(
+      async () => {
+        const result = await chromeCall(
+          () => chrome.storage.local.get(this.STORAGE_KEY),
+          'auth.getStoredAuth',
+          {}
+        );
+        if (!result[this.STORAGE_KEY]) {
+          return null;
+        }
+        
+        const decrypted = await secureCrypto.decrypt(result[this.STORAGE_KEY]);
+        return JSON.parse(decrypted);
+      },
+      'auth.getStoredAuth',
+      null
+    );
   }
   
   /**
    * Clear stored authentication (for logout/reset)
    */
   static async clear(): Promise<void> {
-    await chrome.storage.local.remove(this.STORAGE_KEY);
+    await chromeCall(
+      () => chrome.storage.local.remove(this.STORAGE_KEY),
+      'auth.clear'
+    );
     logger.info('Cleared installation authentication');
   }
   
@@ -309,34 +318,34 @@ export class InstallationAuth {
    * Generate HMAC signature for request verification
    */
   private static async generateSignature(installationId: string, timestamp: string): Promise<string> {
-    try {
-      // Use the installation token as the signing key
-      const token = await this.getToken();
-      const message = `${installationId}-${timestamp}`;
-      
-      // Convert string to ArrayBuffer
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(token);
-      const messageData = encoder.encode(message);
-      
-      // Import key for HMAC
-      const key = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-      
-      // Generate signature
-      const signature = await crypto.subtle.sign('HMAC', key, messageData);
-      
-      // Convert to base64
-      return btoa(String.fromCharCode(...new Uint8Array(signature)));
-    } catch (error) {
-      logger.error('Failed to generate signature:', error);
-      throw error;
-    }
+    return safe(
+      async () => {
+        // Use the installation token as the signing key
+        const token = await this.getToken();
+        const message = `${installationId}-${timestamp}`;
+        
+        // Convert string to ArrayBuffer
+        const encoder = new TextEncoder();
+        const keyData = encoder.encode(token);
+        const messageData = encoder.encode(message);
+        
+        // Import key for HMAC
+        const key = await crypto.subtle.importKey(
+          'raw',
+          keyData,
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        
+        // Generate signature
+        const signature = await crypto.subtle.sign('HMAC', key, messageData);
+        
+        // Convert to base64
+        return btoa(String.fromCharCode(...new Uint8Array(signature)));
+      },
+      'auth.generateSignature'
+    );
   }
   
   /**

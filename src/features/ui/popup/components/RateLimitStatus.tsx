@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { safe } from '../../../../shared/utils/helpers';
 
 interface RateLimitInfo {
   translationLimits: {
@@ -35,15 +36,15 @@ export default function RateLimitStatus({ className = '' }: Props): React.JSX.El
   }, []);
   
   async function loadRateLimits(): Promise<void> {
-    try {
+    await safe(async () => {
       const response = await chrome.runtime.sendMessage({ type: 'GET_RATE_LIMITS' });
       if (response.limits) {
         setLimits(response.limits);
       }
       setLoading(false);
-    } catch (error) {
-      setLoading(false);
-    }
+    }, 'Loading rate limits', undefined);
+    // Ensure loading is set to false even if error occurs
+    setLoading(false);
   }
   
   if (loading || !limits) {

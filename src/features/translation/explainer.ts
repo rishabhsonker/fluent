@@ -4,6 +4,7 @@
 
 import { storage } from '../settings/storage';
 import { logger } from '../../shared/logger';
+import { safe } from '../../shared/utils/helpers';
 import { LanguageCode, ContextExplanation, MessageRequest, MessageResponse } from '../../shared/types';
 
 interface CommonExplanations {
@@ -133,25 +134,26 @@ export class ContextHelper {
     }
     
     // Generate new explanation
-    try {
-      const explanation = await this.generateExplanation(word, translation, language, sentence);
-      
-      // Cache the explanation
-      this.cache.set(cacheKey, explanation);
-      await this.saveCache();
-      
-      // Update usage count
-      this.dailyCount++;
-      await this.updateUsage();
-      
-      return explanation;
-    } catch (error) {
-      logger.error('Error generating explanation:', error);
-      return {
+    return safe(
+      async () => {
+        const explanation = await this.generateExplanation(word, translation, language, sentence);
+        
+        // Cache the explanation
+        this.cache.set(cacheKey, explanation);
+        await this.saveCache();
+        
+        // Update usage count
+        this.dailyCount++;
+        await this.updateUsage();
+        
+        return explanation;
+      },
+      'explainer.getExplanation',
+      {
         error: true,
         explanation: 'Unable to generate explanation at this time.'
-      };
-    }
+      } as LimitedExplanation
+    );
   }
   
   private async generateExplanation(

@@ -4,6 +4,7 @@
  */
 
 import { logError } from './logger.js';
+import { safe } from './utils.js';
 
 /**
  * Get site configuration
@@ -41,19 +42,13 @@ export async function getSiteConfig(env) {
     lastUpdated: new Date().toISOString()
   };
 
-  // Try to get custom configuration from KV if available
-  try {
-    const customConfig = env.TRANSLATION_CACHE ? await env.TRANSLATION_CACHE.get('site-config', { type: 'json' }) : null;
-    if (customConfig) {
-      return {
-        ...defaultConfig,
-        ...customConfig,
-        optimizedSites: [...defaultConfig.optimizedSites, ...(customConfig.optimizedSites || [])]
-      };
+  // Try to get custom configuration from D1 if available
+  await safe(async () => {
+    if (env.DB) {
+      // In the future, we could store site config in D1
+      // For now, just return default config
     }
-  } catch (error) {
-    logError('Failed to load custom site config', error);
-  }
+  }, 'Failed to load custom site config');
 
   return defaultConfig;
 }
@@ -64,8 +59,8 @@ export async function getSiteConfig(env) {
 export function validateEnvironment(env) {
   const warnings = [];
   
-  if (!env.TRANSLATION_CACHE) {
-    warnings.push('TRANSLATION_CACHE KV namespace not bound - caching disabled');
+  if (!env.DB) {
+    warnings.push('D1 database not bound - caching and user tracking disabled');
   }
   
   if (!env.MICROSOFT_TRANSLATOR_KEY) {

@@ -19,14 +19,21 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
+import { safe } from './utils.js';
 
 const CONFIG_FILE = './config.json';
 
 // Load existing configuration
 function loadConfig() {
-  if (existsSync(CONFIG_FILE)) {
-    return JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
+  try {
+    if (existsSync(CONFIG_FILE)) {
+      const content = readFileSync(CONFIG_FILE, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch (error) {
+    console.error('⚠️  Error loading config file:', error.message);
   }
+  
   return {
     blockedSites: [],
     optimizedSites: [],
@@ -38,30 +45,31 @@ function loadConfig() {
 
 // Save configuration
 function saveConfig(config) {
-  config.lastUpdated = new Date().toISOString();
-  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-  console.log('✅ Configuration saved to config.json');
+  try {
+    config.lastUpdated = new Date().toISOString();
+    writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    console.log('✅ Configuration saved to config.json');
+  } catch (error) {
+    console.error('❌ Failed to save configuration:', error.message);
+    process.exit(1);
+  }
 }
 
-// Upload configuration to Cloudflare KV
-function uploadConfig() {
+// Upload configuration to D1 database
+async function uploadConfig() {
   const config = loadConfig();
   
-  console.log('📤 Uploading configuration to Cloudflare KV...');
+  console.log('📤 Uploading configuration to D1 database...');
   
-  try {
-    // Upload to KV - use proper wrangler v3 syntax
-    execSync(`npx wrangler kv key put --binding=TRANSLATION_CACHE "site-config" '${JSON.stringify(config)}' --preview false`, {
-      stdio: 'inherit'
-    });
-    
-    console.log('✅ Configuration uploaded successfully!');
-    console.log('📊 Stats:');
+  await safe(async () => {
+    // For now, we'll need to implement this through the Worker API
+    // or use direct D1 commands when available
+    console.log('⚠️  D1 upload not yet implemented');
+    console.log('Configuration would include:');
     console.log(`   - Blocked sites: ${config.blockedSites.length}`);
     console.log(`   - Optimized sites: ${config.optimizedSites.length}`);
-  } catch (error) {
-    console.error('❌ Failed to upload configuration:', error.message);
-  }
+    console.log('\nTo implement: Create a system_config table in D1 for storing site configurations');
+  }, 'Upload configuration to D1');
 }
 
 // Add blocked site
@@ -146,69 +154,71 @@ function listConfig() {
 }
 
 // Main CLI
-const command = process.argv[2];
-const args = process.argv.slice(3);
+async function main() {
+  const command = process.argv[2];
+  const args = process.argv.slice(3);
 
-switch (command) {
-  case 'block':
-    if (args.length === 0) {
-      console.error('Usage: node sites.js block <domain>');
-      process.exit(1);
-    }
-    addBlockedSite(args[0]);
-    break;
-    
-  case 'unblock':
-    if (args.length === 0) {
-      console.error('Usage: node sites.js unblock <domain>');
-      process.exit(1);
-    }
-    removeBlockedSite(args[0]);
-    break;
-    
-  case 'optimize':
-    if (args.length < 2) {
-      console.error('Usage: node sites.js optimize <domain> <selector> [words-per-page]');
-      console.error('Example: node sites.js optimize example.com "article p" 10');
-      process.exit(1);
-    }
-    addOptimizedSite(args[0], args[1], parseInt(args[2] || '8'));
-    break;
-    
-  case 'list':
-    listConfig();
-    break;
-    
-  case 'upload':
-    uploadConfig();
-    break;
-    
-  case 'download':
-    console.log('📥 Downloading configuration from Cloudflare KV...');
-    try {
-      const result = execSync('npx wrangler kv key get --binding=TRANSLATION_CACHE "site-config"', {
-        encoding: 'utf-8'
-      });
-      const config = JSON.parse(result);
-      saveConfig(config);
-      console.log('✅ Configuration downloaded successfully!');
-    } catch (error) {
-      console.error('❌ Failed to download configuration:', error.message);
-    }
-    break;
-    
-  default:
-    console.log('Fluent Site Configuration Manager');
-    console.log('=================================\n');
-    console.log('Commands:');
-    console.log('  block <domain>         - Block translations on a domain');
-    console.log('  unblock <domain>       - Remove domain from blocklist');
-    console.log('  optimize <domain> <selector> [words] - Add optimized config for a site');
-    console.log('  list                   - Show current configuration');
-    console.log('  upload                 - Upload config to Cloudflare KV');
-    console.log('  download               - Download config from Cloudflare KV');
-    console.log('\nExamples:');
-    console.log('  node sites.js block facebook.com');
-    console.log('  node sites.js optimize nytimes.com ".css-at9mc1 p" 10');
-    console.log('  node sites.js upload');
+  switch (command) {
+    case 'block':
+      if (args.length === 0) {
+        console.error('Usage: node sites.js block <domain>');
+        process.exit(1);
+      }
+      addBlockedSite(args[0]);
+      break;
+      
+    case 'unblock':
+      if (args.length === 0) {
+        console.error('Usage: node sites.js unblock <domain>');
+        process.exit(1);
+      }
+      removeBlockedSite(args[0]);
+      break;
+      
+    case 'optimize':
+      if (args.length < 2) {
+        console.error('Usage: node sites.js optimize <domain> <selector> [words-per-page]');
+        console.error('Example: node sites.js optimize example.com "article p" 10');
+        process.exit(1);
+      }
+      addOptimizedSite(args[0], args[1], parseInt(args[2] || '8'));
+      break;
+      
+    case 'list':
+      listConfig();
+      break;
+      
+    case 'upload':
+      await uploadConfig();
+      break;
+      
+    case 'download':
+      console.log('📥 Downloading configuration from D1 database...');
+      await safe(async () => {
+        console.log('⚠️  D1 download not yet implemented');
+        console.log('To implement: Query system_config table from D1 database');
+      }, 'Download configuration from D1');
+      break;
+      
+    default:
+      console.log('Fluent Site Configuration Manager');
+      console.log('=================================\n');
+      console.log('Commands:');
+      console.log('  block <domain>         - Block translations on a domain');
+      console.log('  unblock <domain>       - Remove domain from blocklist');
+      console.log('  optimize <domain> <selector> [words] - Add optimized config for a site');
+      console.log('  list                   - Show current configuration');
+      console.log('  upload                 - Upload config to D1 database (not yet implemented)');
+      console.log('  download               - Download config from D1 database (not yet implemented)');
+      console.log('\nExamples:');
+      console.log('  node sites.js block facebook.com');
+      console.log('  node sites.js optimize nytimes.com ".css-at9mc1 p" 10');
+      console.log('  node sites.js upload');
+  }
 }
+
+// Run main function
+main().catch(error => {
+  console.error('❌ Unexpected error:', error.message);
+  process.exit(1);
+});

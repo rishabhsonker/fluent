@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useErrorHandler } from '../../utils/handler';
 
 interface SettingsProps {
   onClose: () => void;
@@ -38,60 +39,66 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [savedMessage, setSavedMessage] = useState<string>('');
+  const errorHandler = useErrorHandler('Settings');
 
   useEffect(() => {
     loadSettings();
   }, []);
 
   async function loadSettings(): Promise<void> {
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_API_KEY' }) as APIKeyResponse;
-      if (response.apiKey) {
-        setApiKey(response.apiKey);
-      }
-      
-      // Get daily usage
-      const usage = await chrome.runtime.sendMessage({ type: 'GET_DAILY_USAGE' }) as DailyUsageResponse;
-      setWordsToday(usage.wordsToday || 0);
-      setWordsLimit(usage.wordsLimit || 100);
-      setExplanationsToday(usage.explanationsToday || 0);
-      setExplanationsLimit(usage.explanationsLimit || 100);
-      setIsPlus(usage.isPlus || false);
-    } catch (error) {
-      // Error loading API settings - use defaults
-    }
+    await errorHandler.withErrorHandling(
+      async () => {
+        const response = await chrome.runtime.sendMessage({ type: 'GET_API_KEY' }) as APIKeyResponse;
+        if (response.apiKey) {
+          setApiKey(response.apiKey);
+        }
+        
+        // Get daily usage
+        const usage = await chrome.runtime.sendMessage({ type: 'GET_DAILY_USAGE' }) as DailyUsageResponse;
+        setWordsToday(usage.wordsToday || 0);
+        setWordsLimit(usage.wordsLimit || 100);
+        setExplanationsToday(usage.explanationsToday || 0);
+        setExplanationsLimit(usage.explanationsLimit || 100);
+        setIsPlus(usage.isPlus || false);
+      },
+      'loadSettings'
+    );
   }
 
   async function saveApiKey(): Promise<void> {
     setSaving(true);
-    try {
-      await chrome.runtime.sendMessage({
-        type: 'SET_API_KEY',
-        apiKey: apiKey.trim()
-      });
-      setSavedMessage('API key saved successfully!');
-      setTimeout(() => setSavedMessage(''), 3000);
-    } catch (error) {
-      // Error saving API key - will be handled by UI
-      setSavedMessage('Error saving API key');
-    }
+    await errorHandler.withErrorHandling(
+      async () => {
+        await chrome.runtime.sendMessage({
+          type: 'SET_API_KEY',
+          apiKey: apiKey.trim()
+        });
+        setSavedMessage('API key saved successfully!');
+        setTimeout(() => setSavedMessage(''), 3000);
+      },
+      'saveApiKey',
+      {
+        onError: () => setSavedMessage('Error saving API key')
+      }
+    );
     setSaving(false);
   }
 
   async function removeApiKey(): Promise<void> {
     if (confirm('Are you sure you want to remove your API key?')) {
       setSaving(true);
-      try {
-        await chrome.runtime.sendMessage({
-          type: 'SET_API_KEY',
-          apiKey: ''
-        });
-        setApiKey('');
-        setSavedMessage('API key removed');
-        setTimeout(() => setSavedMessage(''), 3000);
-      } catch (error) {
-        // Error removing API key - will be handled by UI
-      }
+      await errorHandler.withErrorHandling(
+        async () => {
+          await chrome.runtime.sendMessage({
+            type: 'SET_API_KEY',
+            apiKey: ''
+          });
+          setApiKey('');
+          setSavedMessage('API key removed');
+          setTimeout(() => setSavedMessage(''), 3000);
+        },
+        'removeApiKey'
+      );
       setSaving(false);
     }
   }

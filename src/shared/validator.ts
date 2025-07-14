@@ -8,7 +8,8 @@ import {
   ENCODING_CHECKS,
   LANGUAGE_VALIDATORS,
   type LanguageValidator 
-} from './validation-constants';
+} from './validation';
+import { safeSync } from './utils/helpers';
 
 interface SettingsBounds {
   wordsPerPage: {
@@ -172,7 +173,7 @@ export class Validator {
     }
     
     // Parse URL for validation
-    try {
+    return safeSync(() => {
       const parsed = new URL(trimmed);
       
       // Only allow http and https
@@ -201,9 +202,7 @@ export class Validator {
       }
       
       return parsed.toString();
-    } catch {
-      return null;
-    }
+    }, 'URL validation', null);
   }
 
   // Validate API key
@@ -393,13 +392,11 @@ export class Validator {
       return false;
     }
     
-    try {
+    return safeSync(() => {
       const jsonString = JSON.stringify(payload);
       const sizeInBytes = new TextEncoder().encode(jsonString).length;
       return sizeInBytes <= VALIDATION_LIMITS.MAX_REQUEST_SIZE_BYTES;
-    } catch {
-      return false;
-    }
+    }, 'Payload size validation', false);
   }
 }
 
