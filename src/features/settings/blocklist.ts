@@ -2,11 +2,8 @@
 'use strict';
 
 import { storage } from './storage';
-import { getErrorHandler } from '../../shared/utils/error-handler';
-import { safeSync, safe } from '../../shared/utils/helpers';
+import { safeSync } from '../../shared/utils/helpers';
 import { CACHE_LIMITS } from '../../shared/constants';
-
-const errorHandler = getErrorHandler();
 
 // Default blacklisted patterns - sensitive sites that should never be translated
 const DEFAULT_BLACKLIST: RegExp[] = [

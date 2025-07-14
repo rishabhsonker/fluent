@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { safe, chromeCall, safeSync } from '../../../../shared/utils/helpers';
+import { safe, chromeCall } from '../../../../shared/utils/helpers';
 
 interface CategoryConfig {
   name: string;

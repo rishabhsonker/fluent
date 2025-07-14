@@ -3,7 +3,6 @@
 'use strict';
 
 import { storage } from '../settings/storage';
-import { logger } from '../../shared/logger';
 import { safe } from '../../shared/utils/helpers';
 import { LanguageCode, ContextExplanation, MessageRequest, MessageResponse } from '../../shared/types';
 import { CACHE_LIMITS, THRESHOLD, NUMERIC } from '../../shared/constants';

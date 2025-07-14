@@ -35,12 +35,12 @@
 'use strict';
 
 import { logger } from '../../../shared/logger';
-import { TIMING, PERFORMANCE_LIMITS, NUMERIC, UI_DIMENSIONS_EXTENDED, ARRAY, TIME, THRESHOLD, ANIMATION } from '../../../shared/constants';
+import { TIMING, PERFORMANCE_LIMITS, NUMERIC, ARRAY, TIME, THRESHOLD, ANIMATION } from '../../../shared/constants';
 import { CSS_DIMENSIONS } from '../../../shared/constants/css-variables';
 import { ComponentAsyncManager } from '../../../shared/async';
 import { throttle } from '../../../shared/performance';
 import { safe } from '../../../shared/utils/helpers';
-import type { LanguageCode, WordProgress, ContextExplanation, MessageResponse } from '../../../shared/types';
+import type { LanguageCode, WordProgress } from '../../../shared/types';
 
 interface LanguageInfo {
   name: string;
@@ -48,10 +48,10 @@ interface LanguageInfo {
 }
 
 interface EventHandlers {
-  documentMouseEnter: ((e: MouseEvent) => void) | null;
-  documentMouseLeave: ((e: MouseEvent) => void) | null;
-  documentFocus: ((e: FocusEvent) => void) | null;
-  documentBlur: ((e: FocusEvent) => void) | null;
+  documentMouseEnter: ((_: MouseEvent) => void) | null;
+  documentMouseLeave: ((_: MouseEvent) => void) | null;
+  documentFocus: ((_: FocusEvent) => void) | null;
+  documentBlur: ((_: FocusEvent) => void) | null;
   tooltipMouseEnter: (() => void) | null;
   tooltipMouseLeave: (() => void) | null;
   pronunciationClick: (() => void) | null;
@@ -60,8 +60,8 @@ interface EventHandlers {
 }
 
 interface Storage {
-  recordWordInteraction(word: string, language: LanguageCode, interactionType: 'hover' | 'pronunciation' | 'context'): Promise<WordProgress>;
-  getWordProgress(word: string, language: LanguageCode): Promise<WordProgress | null>;
+  recordWordInteraction(_word: string, _language: LanguageCode, _interactionType: 'hover' | 'pronunciation' | 'context'): Promise<WordProgress>;
+  getWordProgress(_word: string, _language: LanguageCode): Promise<WordProgress | null>;
 }
 
 export class Tooltip {
@@ -584,7 +584,7 @@ export class Tooltip {
     original: string,
     translation: string,
     language: LanguageCode,
-    gender?: string | null
+    _gender?: string | null
   ): Promise<void> {
     
     // Check if operation was cancelled
@@ -801,7 +801,7 @@ export class Tooltip {
         this.element.classList.add('top');
       } else {
         top = targetRect.bottom + scrollTop + CSS_DIMENSIONS.TOOLTIP_ARROW_SIZE;
-        tooltipAbove = false;
+        // tooltipAbove = false;
         this.element.classList.remove('top');
         this.element.classList.add('bottom');
       }

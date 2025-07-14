@@ -116,7 +116,7 @@ function App(): React.JSX.Element {
     
     setSettings({ ...settings, targetLanguage: language as LanguageCode });
     
-    const response = await chrome.runtime.sendMessage({
+    await chrome.runtime.sendMessage({
       type: 'UPDATE_SETTINGS',
       settings: { targetLanguage: language }
     });

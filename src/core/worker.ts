@@ -31,7 +31,7 @@
 'use strict';
 
 
-import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS, API_CONFIG, TIME, DOMAIN, MONITORING, CHROME, NUMERIC, HTTP_STATUS, RATE_LIMITS_EXTENDED, ARRAY } from '../shared/constants';
+import { STORAGE_KEYS, DEFAULT_SETTINGS, PERFORMANCE_LIMITS, API_CONFIG, TIME, DOMAIN, NUMERIC, RATE_LIMITS_EXTENDED, ARRAY } from '../shared/constants';
 import { config } from '../shared/config';
 import { validator } from '../shared/validator';
 import { logger } from '../shared/logger';
@@ -234,7 +234,7 @@ async function loadSettings(): Promise<void> {
 }
 
 // Secure message handling
-chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
+chrome.runtime.onMessage.addListener((request: any, sender: chrome.runtime.MessageSender, sendResponse: () => void) => {
   
   
   // Handle async responses
@@ -284,16 +284,18 @@ async function handleMessage(request: any, sender: chrome.runtime.MessageSender)
     case 'GET_API_KEY':
       return getApiKey();
       
-    case 'SET_API_KEY':
+    case 'SET_API_KEY': {
       const validKey = validator.validateApiKey(request.apiKey);
       if (!validKey && request.apiKey) {
         throw new Error('Invalid API key format');
       }
       return setApiKey(validKey);
+    }
       
-    case 'ENABLE_FOR_SITE':
+    case 'ENABLE_FOR_SITE': {
       const enabled = await contentScriptManager.enableForCurrentTab();
       return { success: enabled };
+    }
       
     case 'GET_DAILY_USAGE':
       return getDailyUsage();
@@ -372,10 +374,6 @@ async function updateSettings(newSettings: Partial<UserSettings>): Promise<{ suc
   await chrome.storage.sync.set({
     [STORAGE_KEYS.USER_SETTINGS]: state.settings
   });
-  
-  // Verify save worked
-  const saved = await chrome.storage.sync.get(STORAGE_KEYS.USER_SETTINGS);
-  
   
   return { success: true };
 }
@@ -951,12 +949,3 @@ chrome.runtime.onSuspend?.addListener(() => {
   
   logger.info('[Service Worker] Cleanup complete');
 });
-
-// Export for testing
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    handleMessage,
-    getTranslations,
-    getCacheStats
-  };
-}

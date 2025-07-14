@@ -42,8 +42,12 @@ jobs:
     - name: Validate site configuration
       working-directory: workers/cloudflare
       run: |
-        # Check if site-config.json is valid JSON
-        node -e "JSON.parse(require('fs').readFileSync('./site-config.json', 'utf8'))"
+        # Check if config.json is valid JSON (if it exists)
+        if [ -f "./config.json" ]; then
+          node -e "JSON.parse(require('fs').readFileSync('./config.json', 'utf8'))"
+        else
+          echo "No config.json file found, skipping validation"
+        fi
 
   deploy:
     runs-on: ubuntu-latest
@@ -94,10 +98,10 @@ jobs:
       env:
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       run: |
-        # Only upload if site-config.json has changed
-        if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q "site-config.json"; then
+        # Only upload if config.json has changed
+        if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q "config.json"; then
           echo "Site configuration changed, uploading to KV..."
-          node manage-sites.js upload
+          node sites.js upload
         else
           echo "No site configuration changes detected"
         fi

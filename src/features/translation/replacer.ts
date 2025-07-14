@@ -34,7 +34,7 @@
 'use strict';
 
 import { logger } from '../../shared/logger';
-import { MATH, DOMAIN, NUMERIC, ARRAY, WORD_CONFIG, SRS, PERFORMANCE_LIMITS, CRYPTO } from '../../shared/constants';
+import { MATH, DOMAIN, NUMERIC, ARRAY, WORD_CONFIG, CRYPTO } from '../../shared/constants';
 import { getMemoryMonitor } from '../../shared/monitor';
 import { 
   sanitizeText, 
@@ -90,7 +90,7 @@ export class WordReplacer {
 
   // Analyze text and find suitable words for replacement
   async analyzeText(textNodes: Text[]): Promise<string[]> {
-    const startTime = performance.now();
+    // const startTime = performance.now(); // TODO: Use for performance monitoring
     
     // Import performance utilities
     const { processInChunks } = await import('../../shared/performance');
@@ -464,7 +464,7 @@ export class WordReplacer {
     if ((globalThis as any).gc) {
       try {
         (globalThis as any).gc();
-      } catch (e) {
+      } catch {
         // Ignore - gc might not be available
       }
     }

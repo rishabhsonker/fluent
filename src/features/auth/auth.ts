@@ -68,7 +68,7 @@ export class InstallationAuth {
         }
       },
       'auth.initialize'
-    ).catch(error => {
+    ).catch(() => {
       // Re-throw with more specific error message
       throw new Error('Authentication initialization failed');
     });
@@ -237,7 +237,7 @@ export class InstallationAuth {
    * Check if token should be refreshed
    * Currently disabled as the worker doesn't have a refresh endpoint
    */
-  private static shouldRefreshToken(auth: InstallationData): boolean {
+  private static shouldRefreshToken(_: InstallationData): boolean {
     return false;
   }
   

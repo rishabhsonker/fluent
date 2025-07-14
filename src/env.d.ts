@@ -14,6 +14,4 @@ interface ImportMetaEnv {
   readonly BASE_URL: string
 }
 
-interface ImportMeta {
-  readonly env: ImportMetaEnv
-}
+// ImportMeta is already declared by Vite, we just extend ImportMetaEnv above

@@ -35,16 +35,15 @@
 
 import { logger } from '../../shared/logger';
 import { ComponentAsyncManager } from '../../shared/async';
-import { rateLimiter } from '../../shared/throttle';
 import { safe, sendMessage } from '../../shared/utils/helpers';
 import type { UserSettings, LanguageCode } from '../../shared/types';
-import { TIME, NUMERIC, RATE_LIMITS, PROCESSING, ANIMATION, ARRAY } from '../../shared/constants';
+import { TIME, NUMERIC, RATE_LIMITS, ANIMATION, ARRAY } from '../../shared/constants';
 import { CSS_SHADOWS } from '../../shared/constants/css-variables';
 import type { Tooltip } from '../ui/tooltip/tooltip';
 import type { PageControl } from '../ui/widget/widget';
 import type { WordReplacer } from './replacer';
 import type { TextProcessor } from './processor';
-import { shouldProcessSite, getSiteConfig, shouldSkipElement, type SiteConfig, SITE_CONFIGS } from './config';
+import { shouldProcessSite, getSiteConfig, shouldSkipElement } from './config';
 import { showErrorNotification, showLimitNotification } from './notifications';
 import { ContentScriptErrorBoundary } from './boundary';
 
@@ -59,6 +58,9 @@ declare global {
     };
   }
 }
+
+// Ensure Window is used
+export {};
 
 interface ContentConfig {
   MAX_PROCESSING_TIME: number;
@@ -387,7 +389,7 @@ interface ContentConfig {
     
     return asyncManager.execute(
       'initialize-extension',
-      async (signal) => {
+      async () => {
         try {
           // Load CSS
           const link = document.createElement('link');
@@ -551,7 +553,7 @@ interface ContentConfig {
     const MAX_MUTATIONS_PER_SECOND = 10;
     let lastMutationTime = Date.now();
     
-    mutationObserver = new MutationObserver((mutations) => {
+    mutationObserver = new MutationObserver(() => {
       // Protect against mutation floods
       const now = Date.now();
       if (now - lastMutationTime < TIME.MS_PER_SECOND) {

@@ -34,17 +34,15 @@
 
 'use strict';
 
-import { API_CONFIG, STORAGE_KEYS, CACHE_LIMITS, SUPPORTED_LANGUAGES, NETWORK, TIME, NUMERIC, RATE_LIMITS_EXTENDED, DOMAIN, PROCESSING, ARRAY, CRYPTO } from '../../shared/constants';
+import { API_CONFIG, STORAGE_KEYS, CACHE_LIMITS, SUPPORTED_LANGUAGES, NETWORK, TIME, NUMERIC, RATE_LIMITS_EXTENDED, PROCESSING, ARRAY, CRYPTO } from '../../shared/constants';
 import { storage } from '../settings/storage';
 import { validator } from '../../shared/validator';
 import { rateLimiter } from '../../shared/throttle';
 import { logger } from '../../shared/logger';
 import { costGuard } from '../../shared/cost';
-import { secureCrypto } from '../auth/crypto';
-import { InstallationAuth } from '../auth/auth';
 import { offlineManager } from '../../shared/offline';
 import { translationCache } from '../../shared/cache';
-import { fetchWithRetry, NetworkError } from '../../shared/network';
+import { fetchWithRetry } from '../../shared/network';
 import { safe, chromeCall } from '../../shared/utils/helpers';
 import { getErrorHandler } from '../../shared/utils/error-handler';
 import type { 
@@ -163,7 +161,7 @@ export class SimpleTranslator {
             await this.updateCache(cacheKey, translation);
           }
         }, 'translator.translate');
-      } catch (error) {
+      } catch {
         // Return partial results on error
         return {
           translations,

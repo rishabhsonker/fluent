@@ -138,7 +138,9 @@ async function initSentryInternal(context: ExtensionContext) {
             if (integrations?.CaptureConsole) {
               return [new integrations.CaptureConsole({ levels: ['error', 'warn'] })];
             }
-          } catch {}
+          } catch {
+            // Ignore dynamic import failures
+          }
           return [];
         })()),
         // Browser tracing for performance

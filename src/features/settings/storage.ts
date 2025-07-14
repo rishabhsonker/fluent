@@ -1,10 +1,9 @@
 // Storage.ts - Chrome storage wrapper with type safety
 'use strict';
 
-import { STORAGE_KEYS, DEFAULT_SETTINGS, RATE_LIMITS, TIME, NUMERIC, CHROME, STORAGE_SIZE, DOMAIN, SRS, MONITORING, PROCESSING, ANIMATION, NETWORK, CACHE_LIMITS } from '../../shared/constants';
+import { STORAGE_KEYS, DEFAULT_SETTINGS, RATE_LIMITS, TIME, NUMERIC, CHROME, STORAGE_SIZE, DOMAIN, ANIMATION, NETWORK, CACHE_LIMITS } from '../../shared/constants';
 import { logger } from '../../shared/logger';
 import { safe, safeSync, chromeCall } from '../../shared/utils/helpers';
-import { getErrorHandler } from '../../shared/utils/error-handler';
 import type {
   UserSettings,
   SiteSettings,
@@ -16,7 +15,7 @@ import type {
 } from '../../shared/types';
 import type { SpacedRepetitionWordData } from '../learning/srs';
 
-type StorageListener<T> = (value: T) => void;
+type StorageListener<T> = (_: T) => void;
 
 interface StorageUsage {
   used: number;
@@ -228,7 +227,7 @@ class StorageManager {
     let nextRetryTime = Infinity;
     const now = Date.now();
     
-    for (const [key, failure] of this.failedWrites) {
+    for (const [, failure] of this.failedWrites) {
       const retryDelay = this.RETRY_DELAYS[Math.min(failure.retries, this.RETRY_DELAYS.length - 1)];
       const nextAttempt = failure.lastAttempt + retryDelay;
       nextRetryTime = Math.min(nextRetryTime, nextAttempt);
@@ -343,7 +342,7 @@ class StorageManager {
   }
 
   // Notify user of persistent write failure
-  private notifyWriteFailure(key: string, value: any): void {
+  private notifyWriteFailure(key: string, _: any): void {
     // Send message to popup/content scripts about sync failure
     chrome.runtime.sendMessage({
       type: 'STORAGE_SYNC_FAILED',

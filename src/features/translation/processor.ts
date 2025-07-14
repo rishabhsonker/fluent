@@ -48,7 +48,7 @@ interface IdleDeadline {
   didTimeout: boolean;
 }
 
-type ProcessCallback<T> = (node: Text) => T | null | undefined;
+type ProcessCallback<T> = (_: Text) => T | null | undefined;
 
 export class TextProcessor {
   private config: ProcessorConfig;
@@ -220,7 +220,7 @@ export class TextProcessor {
     );
     
     let node: Node | null;
-    while (node = walker.nextNode()) {
+    while ((node = walker.nextNode()) !== null) {
       nodes.push(node as Text);
       
       // Limit collection for performance
@@ -254,3 +254,6 @@ declare global {
     cancelIdleCallback(id: number): void;
   }
 }
+
+// Ensure Window is used
+export {};

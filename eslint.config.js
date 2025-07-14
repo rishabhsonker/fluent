@@ -37,7 +37,21 @@ export default [
         fetch: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
-        crypto: 'readonly'
+        crypto: 'readonly',
+        performance: 'readonly',
+        btoa: 'readonly',
+        atob: 'readonly',
+        process: 'readonly',
+        NodeJS: 'readonly',
+        location: 'readonly',
+        history: 'readonly',
+        navigator: 'readonly',
+        localStorage: 'readonly',
+        requestIdleCallback: 'readonly',
+        requestAnimationFrame: 'readonly',
+        speechSynthesis: 'readonly',
+        confirm: 'readonly',
+        caches: 'readonly'
       }
     },
     plugins: {

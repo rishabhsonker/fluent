@@ -82,7 +82,7 @@ export class SecureCrypto {
         };
       },
       'crypto.encrypt'
-    ).catch(error => {
+    ).catch(() => {
       throw new Error('Failed to encrypt data');
     });
   }
@@ -116,7 +116,7 @@ export class SecureCrypto {
         return decoder.decode(decryptedBuffer);
       },
       'crypto.decrypt'
-    ).catch(error => {
+    ).catch(() => {
       throw new Error('Failed to decrypt data');
     });
   }
