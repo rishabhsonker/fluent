@@ -20,12 +20,6 @@ test.describe('Fluent Extension Integration Tests', () => {
   let extensionId: string;
 
   test.beforeEach(async ({ context }) => {
-    // Skip extension tests in CI
-    if (process.env.CI) {
-      test.skip();
-      return;
-    }
-    
     // Get extension ID from background service worker
     const [background] = context.serviceWorkers();
     if (background) {

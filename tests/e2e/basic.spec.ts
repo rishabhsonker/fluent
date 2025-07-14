@@ -56,12 +56,6 @@ test.describe('Basic Extension Tests', () => {
   });
 
   test('extension can be loaded in browser', async ({ browser }) => {
-    // Skip this test in CI for now - extensions require special setup
-    if (process.env.CI) {
-      test.skip();
-      return;
-    }
-    
     const pathToExtension = path.join(__dirname, '../../dist');
     
     const context = await browser.newContext({

@@ -19,12 +19,6 @@ let context: BrowserContext;
 let extensionId: string;
 
 test.beforeAll(async ({ browser }) => {
-  // Skip extension tests in CI
-  if (process.env.CI) {
-    test.skip();
-    return;
-  }
-  
   // Launch browser with extension
   const pathToExtension = path.join(__dirname, '../../dist');
   context = await browser.newContext({
@@ -49,11 +43,6 @@ test.afterAll(async () => {
 });
 
 test.describe('Tooltip Functionality', () => {
-  test.beforeEach(async () => {
-    if (process.env.CI) {
-      test.skip();
-    }
-  });
 
   test('should show tooltip with new structure on hover', async () => {
     // Create a test page
